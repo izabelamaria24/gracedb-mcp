@@ -113,3 +113,12 @@ def event_page(record: dict[str, Any]) -> str:
     return EVENT_PAGE.format(
         catalog=record["catalog.shortName"], name=record["commonName"], version=record["version"]
     )
+
+
+def strain_detectors(record: dict[str, Any], start: float, end: float) -> list[str]:
+    """Detectors with a published event strain file (hdf5) covering [start, end]."""
+    return sorted({
+        s["detector"]
+        for s in record.get("strain", [])
+        if s.get("format") == "hdf5" and s["GPSstart"] <= start and end <= s["GPSstart"] + s["duration"]
+    })

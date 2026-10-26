@@ -11,6 +11,7 @@ Tools
 - ``search_catalog_events`` Published events by masses, distance, SNR (GWOSC catalogues).
 - ``get_catalog_event``    Parameters with 90% intervals for one event (GW name or GraceDB id).
 - ``get_event_labels``     GraceDB labels (data quality, review, retraction) with meanings.
+- ``check_data_availability`` Which detectors have public GWOSC strain for a time span.
 
 Note on strain data: GraceDB does **not** host raw strain. Public strain lives at
 GWOSC and is only available for released observing runs, so ``download_strain_data``
@@ -20,12 +21,15 @@ works for archival events, not fresh low-latency alerts.
 from __future__ import annotations
 
 import importlib.util
+import math
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 
 from dotenv import load_dotenv
+from gwosc import timeline
 from mcp.server.mcpserver import MCPServer
 
 from . import gwosc_catalog
@@ -481,6 +485,106 @@ def get_event_labels(graceid: str) -> dict[str, Any]:
             for label in labels
         ],
     }
+
+
+# Detector names go into GWOSC URLs, so only allow the standard two-character form.
+_IFO = re.compile(r"^[A-Z][0-9]$")
+MAX_AVAILABILITY_SPAN = 7 * 86400
+
+
+def _event_time(event: str) -> tuple[float, dict[str, Any] | None]:
+    """GPS time of a superevent or catalogue event, plus its full catalogue record if any."""
+    if event.upper().startswith("GW"):
+        record = gwosc_catalog.event_record(event)
+        return record["GPS"], record
+    t_0 = _client.get_superevent(event).get("t_0")
+    if t_0 is None:
+        raise ValueError(f"superevent {event} has no t_0 GPS time")
+    match = gwosc_catalog.find_by_gps(t_0)
+    return t_0, gwosc_catalog.event_record(match["commonName"]) if match else None
+
+
+@mcp.tool()
+def check_data_availability(
+    gps_start: float | None = None,
+    gps_end: float | None = None,
+    event: str | None = None,
+    window: float = 64.0,
+    detectors: list[str] | None = None,
+) -> dict[str, Any]:
+    """Check which detectors have public GWOSC strain data for a time span.
+
+    Call this before ``download_strain_data``. Public strain exists only for
+    released observing runs, and detectors are often offline, so coverage is
+    frequently partial.
+
+    Args:
+        gps_start: Start of the span in GPS seconds. Use together with ``gps_end``.
+        gps_end: End of the span in GPS seconds, at most 7 days after ``gps_start``.
+        event: Instead of a span, a GraceDB superevent id (``S190814bv``) or a
+            catalogue name (``GW150914``); checks ``window`` seconds centred on it.
+        window: Span in seconds around ``event``.
+        detectors: Detectors to check. Defaults to H1, L1, V1 and K1.
+
+    Returns:
+        For each detector, the public data segments and the fraction of the span
+        they cover. ``available`` lists detectors with complete coverage, also
+        counting the short files GWOSC publishes around catalogue events.
+    """
+    t_0 = record = None
+    if event is not None:
+        _check_id(event)
+        t_0, record = _event_time(event)
+        gps_start, gps_end = t_0 - window / 2, t_0 + window / 2
+    if gps_start is None or gps_end is None:
+        return {"error": "give either gps_start and gps_end, or event"}
+    if not 0 < gps_end - gps_start <= MAX_AVAILABILITY_SPAN:
+        return {"error": f"span must be positive and at most {MAX_AVAILABILITY_SPAN} s (7 days)"}
+    detectors = detectors or ["H1", "L1", "V1", "K1"]
+    bad = [d for d in detectors if not _IFO.match(d)]
+    if bad:
+        return {"error": f"invalid detector names {bad}; use e.g. H1, L1, V1, K1"}
+
+    start, end = math.floor(gps_start), math.ceil(gps_end)
+    with ThreadPoolExecutor(max_workers=len(detectors)) as pool:
+        futures = {
+            ifo: pool.submit(timeline.get_segments, f"{ifo}_DATA", start, end) for ifo in detectors
+        }
+
+    report: dict[str, Any] = {}
+    errors: dict[str, str] = {}
+    for ifo, future in futures.items():
+        try:
+            segments = [(max(s, start), min(e, end)) for s, e in future.result()]
+        except Exception as exc:  # noqa: BLE001 - one detector failing shouldn't hide the rest
+            errors[ifo] = str(exc)
+            continue
+        covered = sum(e - s for s, e in segments if e > s)
+        report[ifo] = {
+            "segments": [list(seg) for seg in segments],
+            "coverage": round(covered / (end - start), 4),
+        }
+
+    event_files = gwosc_catalog.strain_detectors(record, gps_start, gps_end) if record else []
+    result: dict[str, Any] = {
+        "gps_window": [gps_start, gps_end],
+        "available": sorted(
+            ifo for ifo in detectors
+            if ifo in event_files or report.get(ifo, {}).get("coverage") == 1
+        ),
+        "detectors": report,
+        "errors": errors,
+    }
+    if event is not None:
+        result.update(event=event, t_0=t_0)
+    if record:
+        result["catalog_event_files"] = {"event": record["commonName"], "detectors": event_files}
+    if not errors and not event_files and not any(r["coverage"] for r in report.values()):
+        result["note"] = (
+            "No public data in this span: the observing run may not be released yet, "
+            "or the detectors were off."
+        )
+    return result
 
 
 def main() -> None:

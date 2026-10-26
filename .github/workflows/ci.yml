@@ -42,9 +42,25 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-      # CPU-only torch keeps the install small.
-      - run: pip install --extra-index-url https://download.pytorch.org/whl/cpu -e ".[dev,rl]"
+      # Dependency groups need pip >= 25.1. CPU-only torch keeps the install small.
+      - run: python -m pip install -U pip
+      - run: pip install --extra-index-url https://download.pytorch.org/whl/cpu -e ".[dev]" --group rl
       - run: pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build -t gracedb-mcp:ci .
+      - name: Check registry label
+        run: |
+          label=$(docker inspect --format '{{ index .Config.Labels "io.modelcontextprotocol.server.name" }}' gracedb-mcp:ci)
+          test "$label" = "$(jq -r .name server.json)"
+      - name: Server answers initialize over stdio
+        run: |
+          printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
+            | timeout 60 docker run --rm -i gracedb-mcp:ci | tee out.json
+          jq -e '.result.serverInfo.name == "gracedb-mcp"' out.json
 
   audit:
     runs-on: ubuntu-latest

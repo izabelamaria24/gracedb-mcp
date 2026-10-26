@@ -7,12 +7,12 @@
     "url": "https://github.com/izabelamaria24/gracedb-mcp",
     "source": "github"
   },
-  "version": "0.1.0",
+  "version": "0.2.0",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "gracedb-mcp",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
@@ -34,6 +34,28 @@
           "name": "GRACEDB_MCP_DATA_DIR",
           "description": "Directory for downloaded files.",
           "default": "~/.cache/gracedb-mcp",
+          "isRequired": false
+        }
+      ]
+    },
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/izabelamaria24/gracedb-mcp:0.2.0",
+      "runtimeHint": "docker",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "GRACEDB_FORCE_NOAUTH",
+          "description": "Set to true for anonymous access to public superevents.",
+          "default": "true",
+          "isRequired": false
+        },
+        {
+          "name": "GRACEDB_SERVICE_URL",
+          "description": "GraceDB API base URL (production or playground).",
+          "default": "https://gracedb.ligo.org/api/",
           "isRequired": false
         }
       ]

@@ -23,6 +23,7 @@ pipeline (e.g. isolating astrophysical "chirps" from instrumental glitches).
 | `search_catalog_events` | Search published GWOSC catalogue events (GWTC-1 to GWTC-5) by masses, distance, SNR, p_astro. |
 | `get_catalog_event` | Source parameters with 90% intervals for one event, by GW name or GraceDB id. |
 | `get_event_labels` | GraceDB labels (data quality, review, retraction, products ready) explained in plain English. |
+| `check_data_availability` | Which detectors have public GWOSC strain for an event or GPS span, before you download. |
 
 ### ⚠️ Important: where strain data actually comes from
 
@@ -88,9 +89,17 @@ pytest -q            # tests mock the GraceDB client, no network needed
 
 ## Run with Docker
 
+A prebuilt image (linux/amd64 and arm64, with strain support) is published to GHCR:
+
+```bash
+docker run --rm -i -v gracedb-data:/data ghcr.io/izabelamaria24/gracedb-mcp:latest
+```
+
+Or build it yourself:
+
 ```bash
 docker build -t gracedb-mcp .
-docker run --rm -i -v "$(pwd)/data:/data" gracedb-mcp
+docker run --rm -i -v gracedb-data:/data gracedb-mcp
 ```
 
 ## Connect to an MCP client
@@ -120,7 +129,7 @@ Or run the container directly:
   "mcpServers": {
     "gracedb": {
       "command": "docker",
-      "args": ["run", "--rm", "-i", "-v", "gracedb-data:/data", "gracedb-mcp"]
+      "args": ["run", "--rm", "-i", "-v", "gracedb-data:/data", "ghcr.io/izabelamaria24/gracedb-mcp:latest"]
     }
   }
 }
@@ -135,6 +144,7 @@ Or run the container directly:
 - "What are the masses of GW190814, and how certain are they?"
 - "List GWTC-3 events with total mass under 10 solar masses."
 - "Was S190814bv checked by a human? What do its labels mean?"
+- "Is there public strain for GW190814 from every detector?"
 
 ## RL environment (experimental)
 
@@ -147,8 +157,10 @@ catalogue events are kept for evaluation. Chirps are IMRPhenomD waveforms from L
 glitches labelled by [Gravity Spy](https://zenodo.org/records/1486046) (`--glitch real`, default)
 or sine-Gaussian bursts (`--glitch synthetic`).
 
+It is not part of the PyPI package; run it from a clone of this repository (needs pip 25.1+):
+
 ```bash
-pip install -e ".[rl]"
+pip install -e . --group rl
 python scripts/fetch_training_strain.py --catalog GWTC-3-confident  # small files, a few MB
 python scripts/fetch_glitches.py --files 30  # ~3 GB of GWOSC hour files, cached by gwpy
 python scripts/train_agent.py --algo ppo mlp cnn --verbose

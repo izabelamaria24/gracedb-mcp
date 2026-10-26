@@ -43,9 +43,12 @@ FULL_RECORD = {
     "mass_1_source_upper": 1.1,
     "gracedb_id": "S190814bv",
     "strain": [
-        {"detector": "L1", "duration": 4096, "sampling_rate": 4096, "format": "hdf5"},
-        {"detector": "L1", "duration": 4096, "sampling_rate": 4096, "format": "gwf"},
-        {"detector": "H1", "duration": 32, "sampling_rate": 16384, "format": "hdf5"},
+        {"detector": "L1", "duration": 4096, "sampling_rate": 4096, "format": "hdf5",
+         "GPSstart": 1249850209},
+        {"detector": "L1", "duration": 4096, "sampling_rate": 4096, "format": "gwf",
+         "GPSstart": 1249850209},
+        {"detector": "H1", "duration": 32, "sampling_rate": 16384, "format": "hdf5",
+         "GPSstart": 1249852241},
     ],
     "parameters": {"pe_b": {}, "pe_a": {}},
 }
@@ -155,3 +158,71 @@ def test_get_event_labels(fake_client):
     assert result["labels"][2]["meaning"] is None
     assert all("creator" not in label for label in result["labels"])
     assert result["retracted"] is False
+
+
+@pytest.fixture
+def segments(monkeypatch):
+    """Stub GWOSC timeline: returns ``table[ifo]`` clipped to the request, or raises."""
+    table: dict = {}
+    calls: list = []
+
+    def get_segments(flag, start, end):
+        calls.append((flag, start, end))
+        value = table.get(flag.removesuffix("_DATA"), [])
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    monkeypatch.setattr(server.timeline, "get_segments", get_segments)
+    return table, calls
+
+
+def test_availability_by_gps_span(segments):
+    table, calls = segments
+    table.update(H1=[(1000, 1100)], L1=[(1000, 1050)], K1=RuntimeError("timeout"))
+    result = server.check_data_availability(gps_start=1000.4, gps_end=1099.6)
+
+    assert result["available"] == ["H1"]
+    assert result["detectors"]["L1"]["coverage"] == 0.5
+    assert result["detectors"]["V1"] == {"segments": [], "coverage": 0.0}
+    assert result["errors"] == {"K1": "timeout"}
+    assert "note" not in result
+    assert {c[1:] for c in calls} == {(1000, 1100)}  # integer bounds covering the span
+
+
+def test_availability_counts_catalog_event_files(gwosc, segments):
+    table, _ = segments
+    table.update(L1=[(1249852249, 1249852265)])  # H1 has no segment, but has an event file
+    result = server.check_data_availability(event="GW190814", window=16, detectors=["H1", "L1"])
+
+    assert result["t_0"] == 1249852257.0
+    assert result["available"] == ["H1", "L1"]
+    assert result["detectors"]["H1"]["coverage"] == 0.0
+    assert result["catalog_event_files"] == {"event": "GW190814", "detectors": ["H1", "L1"]}
+
+
+def test_availability_by_superevent_id(gwosc, fake_client, segments):
+    result = server.check_data_availability(event="S190814bv", window=8, detectors=["H1"])
+    assert result["catalog_event_files"]["event"] == "GW190814"
+    assert result["available"] == ["H1"]
+
+
+def test_availability_unreleased_span_has_note(gwosc, fake_client, segments):
+    result = server.check_data_availability(event="S230518h")
+    assert result["available"] == []
+    assert "catalog_event_files" not in result
+    assert "not be released" in result["note"]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {},
+        {"gps_start": 10, "gps_end": 5},
+        {"gps_start": 0, "gps_end": 8 * 86400},
+        {"gps_start": 0, "gps_end": 10, "detectors": ["H1/../x"]},
+    ],
+)
+def test_availability_rejects_bad_input(segments, kwargs):
+    assert "error" in server.check_data_availability(**kwargs)
+    assert segments[1] == []
