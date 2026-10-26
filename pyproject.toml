@@ -1,0 +1,36 @@
+[project]
+name = "gracedb-mcp"
+version = "0.1.0"
+description = "MCP server exposing LIGO/Virgo gravitational-wave alerts (GraceDB) to LLM agents."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "izabelamaria24" }]
+keywords = ["mcp", "gravitational-waves", "ligo", "virgo", "gracedb", "astrophysics"]
+
+dependencies = [
+    "mcp>=2.0.0",
+    "ligo-gracedb>=2.11.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+# Strain data lives at GWOSC, not GraceDB. gwpy is only needed for download_strain_data.
+strain = ["gwpy>=3.0.0"]
+rl = ["gwpy>=3.0.0", "gymnasium>=1.0", "stable-baselines3>=2.3", "lalsuite>=7.0"]
+dev = ["pytest>=8.0.0", "ruff>=0.5.0"]
+
+[project.scripts]
+gracedb-mcp = "gracedb_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gracedb_mcp", "src/gw_rl"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
