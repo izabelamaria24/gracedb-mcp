@@ -33,9 +33,9 @@ class ChirpGlitchEnv(gym.Env):
     def reset(self, *, seed: int | None = None, options: dict[str, Any] | None = None):
         super().reset(seed=seed)
         self._i = int(self.np_random.integers(len(self._x)))
-        return self._x[self._i], {}
+        return self._x[self._i].copy(), {}
 
     def step(self, action):
         label = int(self._y[self._i])
         reward = 1.0 if int(action) == label else -1.0
-        return self._x[self._i], reward, True, False, {"label": label}
+        return self._x[self._i].copy(), reward, True, False, {"label": label}
