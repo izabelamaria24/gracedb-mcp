@@ -55,6 +55,15 @@ jobs:
     permissions:
       contents: read
       packages: write  # push to ghcr.io with GITHUB_TOKEN
+    strategy:
+      matrix:
+        include:
+          - variant: full
+            extras: strain
+            suffix: ""
+          - variant: slim
+            extras: ""
+            suffix: "-slim"
     env:
       IMAGE: ghcr.io/izabelamaria24/gracedb-mcp
     steps:
@@ -70,6 +79,8 @@ jobs:
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.IMAGE }}
+          flavor: |
+            suffix=${{ matrix.suffix }},onlatest=true
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -77,16 +88,17 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
+          build-args: EXTRAS=${{ matrix.extras }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
       - name: Check the image is publicly pullable
         # The MCP Registry pulls anonymously; a new GHCR package starts out private.
         run: |
           docker logout ghcr.io
-          if ! docker manifest inspect "$IMAGE:${GITHUB_REF_NAME#v}" > /dev/null; then
+          if ! docker manifest inspect "$IMAGE:${GITHUB_REF_NAME#v}${{ matrix.suffix }}" > /dev/null; then
             echo "::error::$IMAGE is not public. Set it to Public under the package settings on GitHub, then re-run failed jobs."
             exit 1
           fi

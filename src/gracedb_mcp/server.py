@@ -20,6 +20,7 @@ works for archival events, not fresh low-latency alerts.
 
 from __future__ import annotations
 
+import importlib.metadata
 import importlib.util
 import math
 import os
@@ -37,7 +38,7 @@ from .gracedb_client import GraceDbClient
 
 load_dotenv()
 
-mcp = MCPServer(name="gracedb-mcp")
+mcp = MCPServer(name="gracedb-mcp", version=importlib.metadata.version("gracedb-mcp"))
 _client = GraceDbClient()
 
 # The Docker image sets GRACEDB_MCP_DATA_DIR=/data.

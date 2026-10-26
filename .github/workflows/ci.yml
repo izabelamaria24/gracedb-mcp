@@ -49,9 +49,12 @@ jobs:
 
   docker:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        extras: [strain, ""]
     steps:
       - uses: actions/checkout@v7
-      - run: docker build -t gracedb-mcp:ci .
+      - run: docker build --build-arg EXTRAS=${{ matrix.extras }} -t gracedb-mcp:ci .
       - name: Check registry label
         run: |
           label=$(docker inspect --format '{{ index .Config.Labels "io.modelcontextprotocol.server.name" }}' gracedb-mcp:ci)
@@ -61,6 +64,12 @@ jobs:
           printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ci","version":"0"}}}' \
             | timeout 60 docker run --rm -i gracedb-mcp:ci | tee out.json
           jq -e '.result.serverInfo.name == "gracedb-mcp"' out.json
+      - name: Strain support matches the variant
+        run: |
+          docker run --rm --entrypoint python gracedb-mcp:ci -c "
+          import importlib.util as u
+          assert (u.find_spec('gwpy') is not None) == ('${{ matrix.extras }}' == 'strain')
+          "
 
   audit:
     runs-on: ubuntu-latest

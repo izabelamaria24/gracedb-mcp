@@ -165,3 +165,18 @@ def test_pick_gwosc_file_prefers_shortest_covering_file():
     assert server._pick_gwosc_file([hour, event], 1256779551.5, 1256779581.5) == hour
     assert server._pick_gwosc_file([event], 1256779500.0, 1256779530.0) is None
     assert server._pick_gwosc_file(["https://example/not-a-gwosc-name.hdf5"], 0, 1) is None
+
+
+def test_server_reports_package_version():
+    import importlib.metadata
+
+    import anyio
+    from mcp.client.client import Client
+
+    async def server_info():
+        async with Client(server.mcp) as client:
+            return client.server_info
+
+    info = anyio.run(server_info)
+    assert info.name == "gracedb-mcp"
+    assert info.version == importlib.metadata.version("gracedb-mcp")

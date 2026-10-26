@@ -89,13 +89,18 @@ pytest -q            # tests mock the GraceDB client, no network needed
 
 ## Run with Docker
 
-A prebuilt image (linux/amd64 and arm64, with strain support) is published to GHCR:
+A prebuilt image (linux/amd64 and arm64) is published to GHCR:
 
 ```bash
 docker run --rm -i -v gracedb-data:/data ghcr.io/izabelamaria24/gracedb-mcp:latest
 ```
 
-Or build it yourself:
+| Tag | Download | Contents |
+| --- | --- | --- |
+| `latest`, `X.Y.Z` | ~165 MB | Everything, including strain download (`gwpy`). |
+| `latest-slim`, `X.Y.Z-slim` | ~60 MB | All tools except `download_strain_data` and `utc_to_gps`. |
+
+Or build it yourself (add `--build-arg EXTRAS=` for the slim variant):
 
 ```bash
 docker build -t gracedb-mcp .
