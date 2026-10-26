@@ -50,7 +50,7 @@ def with_data(key: tuple[str, int], rows: list[dict]) -> list[dict]:
     start = block * GWOSC_FILE_SECONDS
     try:
         segments = get_segments(f"{ifo}_DATA", start, start + GWOSC_FILE_SECONDS)
-    except Exception as exc:  # network trouble: treat the hour as unavailable
+    except Exception as exc:  # noqa: BLE001 - network trouble: treat the hour as unavailable
         print(f"  availability check failed for {key}: {exc}", flush=True)
         return []
     half = CLIP_SECONDS / 2

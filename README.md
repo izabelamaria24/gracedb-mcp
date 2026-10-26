@@ -1,5 +1,7 @@
 # GraceDB MCP Server
 
+<!-- mcp-name: io.github.izabelamaria24/gracedb-mcp -->
+
 An open-source [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that
 exposes **LIGO/Virgo/KAGRA gravitational-wave alerts** from
 [GraceDB](https://gracedb.ligo.org) to LLM agents. It bridges the official
@@ -36,6 +38,14 @@ GWOSC (and cleanly reports when data isn't public).
 
 ## Install
 
+Run straight from PyPI with [uv](https://docs.astral.sh/uv/):
+
+```bash
+uvx --from "gracedb-mcp[strain]" gracedb-mcp
+```
+
+Or from source:
+
 ```bash
 git clone https://github.com/izabelamaria24/gracedb-mcp.git
 cd gracedb-mcp
@@ -56,7 +66,7 @@ cp .env.example .env
 | `GRACEDB_SERVICE_URL` | API base URL (production or playground). |
 | `GRACEDB_FORCE_NOAUTH` | `true` for anonymous public access. |
 | `GRACEDB_PROXY` / `GRACEDB_CERT` + `GRACEDB_KEY` | LVK member authentication (X.509). |
-| `GRACEDB_MCP_DATA_DIR` | Where downloaded files are written (default `/data`). |
+| `GRACEDB_MCP_DATA_DIR` | Where downloaded files are written (default `~/.cache/gracedb-mcp`; `/data` in Docker). |
 
 ## Run locally
 

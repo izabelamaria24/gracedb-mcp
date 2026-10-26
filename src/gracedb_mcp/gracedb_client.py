@@ -30,7 +30,7 @@ class GraceDbConfig:
     force_noauth: bool = False
 
     @classmethod
-    def from_env(cls) -> "GraceDbConfig":
+    def from_env(cls) -> GraceDbConfig:
         service_url = os.environ.get("GRACEDB_SERVICE_URL", DEFAULT_SERVICE_URL)
         cert = os.environ.get("GRACEDB_CERT")
         key = os.environ.get("GRACEDB_KEY")

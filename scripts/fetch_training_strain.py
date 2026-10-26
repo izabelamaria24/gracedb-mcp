@@ -16,9 +16,9 @@ from pathlib import Path
 os.environ.setdefault("GRACEDB_MCP_DATA_DIR", "./data")
 os.environ.setdefault("GWPY_CACHE", "1")
 
-from gwosc.datasets import event_gps, find_datasets  # noqa: E402
+from gwosc.datasets import event_gps, find_datasets
 
-from gracedb_mcp import server  # noqa: E402
+from gracedb_mcp import server
 
 EVENTS = [
     "GW150914",

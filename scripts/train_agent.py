@@ -14,7 +14,16 @@ from pathlib import Path
 
 import numpy as np
 
-from gw_rl.data import CHIRP, CHIRP_MODELS, GLITCH, LABELS, NOISE, event_windows, load_segment, make_dataset
+from gw_rl.data import (
+    CHIRP,
+    CHIRP_MODELS,
+    GLITCH,
+    LABELS,
+    NOISE,
+    event_windows,
+    load_segment,
+    make_dataset,
+)
 
 # Held out entirely: their noise is never seen during training.
 DEFAULT_TEST_EVENTS = "GW191109_010717,GW200129_065458,GW200224_222234"

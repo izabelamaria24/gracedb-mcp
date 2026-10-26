@@ -52,7 +52,7 @@ def load_segment(path: str | Path, crop: float = 2.0) -> Segment:
 
     path = Path(path)
     name = f"{path.parent.parent.name}/{path.name.split('-')[0]}"
-    index = int(round((event_gps - band.t0.value) * SAMPLE_RATE))
+    index = int(round((event_gps - band.t0.value) * SAMPLE_RATE))  # noqa: RUF046 - numpy 1.x round() returns float
     return Segment(
         name=name,
         x=np.asarray(band.value, dtype=np.float32),
@@ -98,7 +98,7 @@ def imr_chirp(rng: np.random.Generator, n: int = WINDOW, fs: int = SAMPLE_RATE) 
     # A detector sees a mix of the two polarisations; overall scale is set later by the SNR.
     angle = rng.uniform(0, 2 * np.pi)
     h = np.cos(angle) * hp.data.data + np.sin(angle) * hc.data.data
-    merger = int(round(-float(hp.epoch) * fs))
+    merger = int(round(-float(hp.epoch) * fs))  # noqa: RUF046
 
     shift = int(rng.uniform(0.6, 0.95) * n) - merger  # window index = waveform index + shift
     out = np.zeros(n)

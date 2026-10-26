@@ -32,8 +32,8 @@ load_dotenv()
 mcp = MCPServer(name="gracedb-mcp")
 _client = GraceDbClient()
 
-# Where downloaded artifacts/strain are written inside the container.
-DATA_DIR = os.environ.get("GRACEDB_MCP_DATA_DIR", "/data")
+# The Docker image sets GRACEDB_MCP_DATA_DIR=/data.
+DATA_DIR = os.path.expanduser(os.environ.get("GRACEDB_MCP_DATA_DIR", "~/.cache/gracedb-mcp"))
 
 # Event ids become directory names, so reject anything that could escape DATA_DIR.
 _SAFE_ID = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
@@ -187,7 +187,7 @@ def download_event_files(
         try:
             dest = os.path.join(dest_dir, os.path.basename(name))
             saved[name] = _client.download_file(graceid, name, dest)
-        except Exception as exc:  # surface per-file failures without aborting the batch
+        except Exception as exc:  # noqa: BLE001 - surface per-file failures without aborting the batch
             errors[name] = str(exc)
 
     return {"superevent_id": graceid, "saved": saved, "errors": errors}
@@ -281,7 +281,7 @@ def download_strain_data(
             dest = os.path.join(dest_dir, f"{ifo}-{int(start_gps)}-{int(duration)}.hdf5")
             data.write(dest, overwrite=True)
             saved[ifo] = dest
-        except Exception as exc:  # data may not be public for this GPS time
+        except Exception as exc:  # noqa: BLE001 - data may not be public for this GPS time
             errors[ifo] = str(exc)
 
     return {

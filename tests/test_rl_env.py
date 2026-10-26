@@ -8,10 +8,10 @@ import pytest
 pytest.importorskip("gymnasium")
 pytest.importorskip("scipy")
 
-from gymnasium.utils.env_checker import check_env  # noqa: E402
+from gymnasium.utils.env_checker import check_env
 
-from gw_rl import data  # noqa: E402
-from gw_rl.env import ChirpGlitchEnv  # noqa: E402
+from gw_rl import data
+from gw_rl.env import ChirpGlitchEnv
 
 
 def _zero_crossing_rate(x: np.ndarray) -> float:

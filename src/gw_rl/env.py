@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 import gymnasium as gym
 import numpy as np
@@ -18,7 +18,7 @@ class ChirpGlitchEnv(gym.Env):
     handle it, and it can later grow into a multi-step search over a data stream.
     """
 
-    metadata = {"render_modes": []}
+    metadata: ClassVar[dict[str, Any]] = {"render_modes": []}
 
     def __init__(self, observations: np.ndarray, labels: np.ndarray) -> None:
         super().__init__()

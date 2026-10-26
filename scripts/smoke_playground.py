@@ -11,7 +11,7 @@ import os
 os.environ.setdefault("GRACEDB_SERVICE_URL", "https://gracedb-playground.ligo.org/api/")
 os.environ.setdefault("GRACEDB_FORCE_NOAUTH", "true")
 
-from gracedb_mcp import server  # noqa: E402  (env must be set before import)
+from gracedb_mcp import server
 
 
 def main() -> None:
