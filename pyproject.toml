@@ -12,6 +12,7 @@ keywords = ["mcp", "gravitational-waves", "ligo", "virgo", "gracedb", "astrophys
 dependencies = [
     "mcp>=2.0.0",
     "ligo-gracedb>=2.11.0",
+    "gwosc>=0.8.0",
     "python-dotenv>=1.0.0",
 ]
 

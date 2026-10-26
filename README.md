@@ -20,6 +20,9 @@ pipeline (e.g. isolating astrophysical "chirps" from instrumental glitches).
 | `download_event_files` | Download GraceDB artifacts: skymaps, `p_astro.json`, PE results, logs. |
 | `download_strain_data` | Fetch **public** strain time series from GWOSC around the event GPS time. |
 | `utc_to_gps` | Convert an ISO-8601 UTC timestamp to GPS seconds. |
+| `search_catalog_events` | Search published GWOSC catalogue events (GWTC-1 to GWTC-5) by masses, distance, SNR, p_astro. |
+| `get_catalog_event` | Source parameters with 90% intervals for one event, by GW name or GraceDB id. |
+| `get_event_labels` | GraceDB labels (data quality, review, retraction, products ready) explained in plain English. |
 
 ### ⚠️ Important: where strain data actually comes from
 
@@ -33,7 +36,7 @@ GWOSC (and cleanly reports when data isn't public).
 ## Requirements
 
 - Python 3.10+
-- `mcp`, `ligo-gracedb`, `python-dotenv`
+- `mcp`, `ligo-gracedb`, `gwosc`, `python-dotenv`
 - Optional: `gwpy` (for `download_strain_data` and `utc_to_gps`) — installed via the `strain` extra.
 
 ## Install
@@ -129,6 +132,9 @@ Or run the container directly:
 - "What's the source classification for S230518h? Is it more likely a BBH or an NSBH?"
 - "Download the skymap and p_astro file for S230518h."
 - "Fetch H1 and L1 strain around GW150914."
+- "What are the masses of GW190814, and how certain are they?"
+- "List GWTC-3 events with total mass under 10 solar masses."
+- "Was S190814bv checked by a human? What do its labels mean?"
 
 ## RL environment (experimental)
 
@@ -152,7 +158,6 @@ python scripts/train_agent.py --algo ppo mlp cnn --verbose
 
 - Streamable-HTTP transport (in addition to stdio) for remote deployments.
 - MCP **resources** for cached skymaps and p_astro files.
-- Feed `download_strain_data` output into the RL environment (PPO/DQN) for glitch vs. chirp classification.
 
 ## Disclaimer
 

@@ -84,6 +84,9 @@ class GraceDbClient:
     def get_superevent(self, superevent_id: str) -> dict[str, Any]:
         return self.client.superevent(superevent_id).json()
 
+    def get_labels(self, superevent_id: str) -> list[dict[str, Any]]:
+        return self.client.labels(superevent_id).json()["labels"]
+
     def list_files(self, superevent_id: str) -> dict[str, str]:
         """Map filename -> download URL for every file attached to a superevent."""
         return self.client.files(superevent_id).json()

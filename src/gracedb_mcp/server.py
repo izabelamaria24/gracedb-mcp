@@ -8,6 +8,9 @@ Tools
 - ``get_event_metadata``   Full record + source classification (BBH/BNS/NSBH/...).
 - ``download_event_files`` Fetch GraceDB artifacts (skymaps, p_astro, PE, logs).
 - ``download_strain_data`` Fetch *public* strain time series from GWOSC by GPS time.
+- ``search_catalog_events`` Published events by masses, distance, SNR (GWOSC catalogues).
+- ``get_catalog_event``    Parameters with 90% intervals for one event (GW name or GraceDB id).
+- ``get_event_labels``     GraceDB labels (data quality, review, retraction) with meanings.
 
 Note on strain data: GraceDB does **not** host raw strain. Public strain lives at
 GWOSC and is only available for released observing runs, so ``download_strain_data``
@@ -25,6 +28,7 @@ from typing import Any
 from dotenv import load_dotenv
 from mcp.server.mcpserver import MCPServer
 
+from . import gwosc_catalog
 from .gracedb_client import GraceDbClient
 
 load_dotenv()
@@ -309,6 +313,174 @@ def utc_to_gps(iso_timestamp: str) -> dict[str, Any]:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return {"iso": iso_timestamp, "gps": float(to_gps(dt))}
+
+
+def _within(value: float | None, low: float | None, high: float | None) -> bool:
+    if low is None and high is None:
+        return True
+    if value is None:
+        return False
+    return (low is None or value >= low) and (high is None or value <= high)
+
+
+@mcp.tool()
+def search_catalog_events(
+    catalog: str | None = None,
+    gps_start: float | None = None,
+    gps_end: float | None = None,
+    min_snr: float | None = None,
+    min_p_astro: float | None = None,
+    min_total_mass: float | None = None,
+    max_total_mass: float | None = None,
+    max_distance_mpc: float | None = None,
+    max_results: int = 50,
+) -> dict[str, Any]:
+    """Search published gravitational-wave events in the GWOSC catalogues.
+
+    Unlike GraceDB alerts, catalogue events are vetted detections with estimated
+    source parameters. Each event appears once, in its newest version.
+
+    Args:
+        catalog: Restrict to one catalogue, e.g. ``GWTC-1-confident``,
+            ``GWTC-2.1-confident``, ``GWTC-3-confident``, ``GWTC-4.0``. Omit for all.
+        gps_start: Earliest event GPS time. Optional.
+        gps_end: Latest event GPS time. Optional.
+        min_snr: Minimum network matched-filter SNR (louder signals are clearer).
+        min_p_astro: Minimum probability of astrophysical origin, 0-1.
+        min_total_mass: Minimum total source-frame mass in solar masses.
+        max_total_mass: Maximum total source-frame mass in solar masses.
+        max_distance_mpc: Maximum luminosity distance in megaparsecs.
+        max_results: Maximum number of events to return (newest first).
+
+    Returns:
+        ``count`` of all matches and up to ``max_results`` event summaries with
+        masses, distance, redshift, spin (chi_eff), SNR, FAR and p_astro.
+    """
+    if catalog and catalog not in gwosc_catalog.catalogs():
+        return {"error": f"unknown catalog {catalog!r}", "catalogs": gwosc_catalog.catalogs()}
+
+    bounds = [
+        ("network_matched_filter_snr", min_snr, None),
+        ("p_astro", min_p_astro, None),
+        ("total_mass_source", min_total_mass, max_total_mass),
+        ("luminosity_distance", None, max_distance_mpc),
+    ]
+    matches = [
+        gwosc_catalog.summarise(record)
+        for record in gwosc_catalog.all_events(catalog)
+        if _within(record["GPS"], gps_start, gps_end)
+        and all(_within(record.get(param), low, high) for param, low, high in bounds)
+    ]
+    return {
+        "count": len(matches),
+        "units": gwosc_catalog.UNITS,
+        "events": matches[:max_results],
+    }
+
+
+@mcp.tool()
+def get_catalog_event(name: str) -> dict[str, Any]:
+    """Source parameters for one published event, with 90% credible intervals.
+
+    Args:
+        name: A catalogue name such as ``GW150914`` or ``GW200129_065458``, or a
+            GraceDB superevent id such as ``S190814bv`` (matched by GPS time).
+
+    Returns:
+        Masses, distance, redshift, spin, SNR, FAR and p_astro as
+        ``{value, interval_90}``, plus the GraceDB id, available strain files,
+        parameter-estimation sets and the GWOSC event page.
+    """
+    _check_id(name)
+    if not name.upper().startswith("GW"):
+        t_0 = _client.get_superevent(name).get("t_0")
+        match = gwosc_catalog.find_by_gps(t_0) if t_0 is not None else None
+        if match is None:
+            return {
+                "error": f"{name} is not in any GWOSC catalogue (not yet published, "
+                "or retracted)",
+                "t_0": t_0,
+            }
+        name = match["commonName"]
+
+    try:
+        record = gwosc_catalog.event_record(name)
+    except ValueError:
+        prefix = name.upper()[:8]
+        similar = [r["commonName"] for r in gwosc_catalog.all_events()
+                   if r["commonName"].upper().startswith(prefix)]
+        return {"error": f"unknown event {name!r}", "similar": similar[:10]}
+
+    strain = sorted(
+        {(s["detector"], s["duration"], s["sampling_rate"])
+         for s in record.get("strain", []) if s.get("format") == "hdf5"}
+    )
+    return {
+        **gwosc_catalog.summarise(record, intervals=True),
+        "version": record["version"],
+        "gracedb_id": record.get("gracedb_id"),
+        "units": gwosc_catalog.UNITS,
+        "strain_files": [
+            {"detector": d, "duration_s": dur, "sample_rate": rate} for d, dur, rate in strain
+        ],
+        "parameter_sets": sorted(record.get("parameters", {})),
+        "gwosc_page": gwosc_catalog.event_page(record),
+    }
+
+
+LABEL_MEANINGS = {
+    "ADVREQ": "Human review (advocate) requested before a public alert.",
+    "ADVOK": "Advocate approved the candidate.",
+    "ADVNO": "Advocate rejected the candidate; it is retracted.",
+    "DQOK": "Automated data-quality checks passed.",
+    "DQV": "Data-quality veto: an instrumental problem near the event time.",
+    "DQR_REQUEST": "Data-quality report requested.",
+    "INJ": "Injection (simulated signal), not a real event.",
+    "EM_READY": "Initial information ready for electromagnetic follow-up.",
+    "EM_Selected": "Preferred event chosen for the public alert.",
+    "SIGNIF_LOCKED": "Preferred event frozen for a significant alert.",
+    "LOW_SIGNIF_LOCKED": "Preferred event frozen for a low-significance alert.",
+    "SKYMAP_READY": "Sky map available.",
+    "PASTRO_READY": "Source classification (p_astro) available.",
+    "EMBRIGHT_READY": "Neutron-star and remnant probabilities (HasNS, HasRemnant) available.",
+    "PE_READY": "Full parameter estimation finished.",
+    "GCN_PRELIM_SENT": "Preliminary GCN notice sent.",
+    "RAVEN_ALERT": "Coincidence with an external trigger (e.g. gamma-ray burst) found.",
+    "EM_COINC": "Possible coincidence with an external (gamma-ray or neutrino) event.",
+    "COMBINEDSKYMAP_READY": "Sky map combining GW and external-trigger data available.",
+    "EARLY_WARNING": "Detected before merger (pre-merger alert).",
+}
+for _ifo in ("H1", "L1", "V1", "K1"):
+    LABEL_MEANINGS[f"{_ifo}OPS"] = f"{_ifo} operator sign-off requested."
+    LABEL_MEANINGS[f"{_ifo}OK"] = f"{_ifo} operator confirmed the detector was fine."
+    LABEL_MEANINGS[f"{_ifo}NO"] = f"{_ifo} operator reported a detector problem."
+
+
+@mcp.tool()
+def get_event_labels(graceid: str) -> dict[str, Any]:
+    """GraceDB labels on a superevent, in the order they were applied, with meanings.
+
+    Labels record the event's history: data-quality checks (DQOK, DQV), human
+    review (ADVOK, ADVNO = retracted), injections (INJ), and which products are
+    ready (SKYMAP_READY, PE_READY).
+
+    Args:
+        graceid: The superevent id, e.g. ``S190814bv``.
+    """
+    _check_id(graceid)
+    labels = sorted(_client.get_labels(graceid), key=lambda label: label.get("created") or "")
+    return {
+        "superevent_id": graceid,
+        "retracted": any(label["name"] == "ADVNO" for label in labels),
+        "labels": [
+            {
+                "name": label["name"],
+                "created": label.get("created"),
+                "meaning": LABEL_MEANINGS.get(label["name"]),
+            }
+            for label in labels
+        ],
+    }
 
 
 def main() -> None:
