@@ -58,6 +58,9 @@ class FakeGraceDbClient:
 
     def download_file(self, superevent_id: str, filename: str, dest_path: str) -> str:
         self.downloaded.append((superevent_id, filename, dest_path))
+        content = b'{"BBH": 0.95}' if filename.endswith(".json") else b"SIMPLE  =  T \x00\x01"
+        with open(dest_path, "wb") as f:
+            f.write(content)
         return dest_path
 
 
@@ -180,3 +183,69 @@ def test_server_reports_package_version():
     info = anyio.run(server_info)
     assert info.name == "gracedb-mcp"
     assert info.version == importlib.metadata.version("gracedb-mcp")
+
+
+def test_downloaded_files_are_readable_resources(fake_client):
+    import base64
+
+    import anyio
+    from mcp.client.client import Client
+
+    async def scenario():
+        async with Client(server.mcp) as client:
+            async with client.listen(resources_list_changed=True) as events:
+                call = await client.call_tool("download_event_files", {"graceid": "S230518h"})
+                with anyio.fail_after(5):
+                    event = await anext(aiter(events))
+            uris = call.structured_content["resources"]
+            listed = {str(r.uri) for r in (await client.list_resources()).resources}
+            text = await client.read_resource(uris["p_astro.json"])
+            blob = await client.read_resource(uris["bayestar.fits.gz"])
+            return event, uris, listed, text.contents[0], blob.contents[0]
+
+    event, uris, listed, text, blob = anyio.run(scenario)
+
+    assert type(event).__name__ == "ResourcesListChanged"
+    assert uris == {
+        "p_astro.json": "gracedb://files/S230518h/p_astro.json",
+        "bayestar.fits.gz": "gracedb://files/S230518h/bayestar.fits.gz",
+    }
+    assert set(uris.values()) <= listed
+    assert text.mime_type == "application/json" and text.text == '{"BBH": 0.95}'
+    assert blob.mime_type == "application/gzip"
+    assert base64.b64decode(blob.blob) == b"SIMPLE  =  T \x00\x01"
+
+
+def test_large_and_hidden_files_are_not_resources(fake_client, tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "MAX_RESOURCE_BYTES", 4)
+    result = server.download_event_files("S230518h", filenames=["p_astro.json"])
+    assert result["saved"] and result["resources"] == {}
+    hidden = tmp_path / ".DS_Store"
+    hidden.write_bytes(b"")
+    assert server._register_file(str(hidden)) is None
+
+
+def test_existing_downloads_are_registered_at_startup(fake_client, tmp_path):
+    strain = tmp_path / "GW150914" / "strain"
+    strain.mkdir(parents=True)
+    (strain / "H1-1126259446-32.hdf5").write_bytes(b"\x89HDF")
+    server._register_existing_files()
+
+    import anyio
+
+    resources = {str(r.uri): r for r in anyio.run(server.mcp.list_resources)}
+    resource = resources["gracedb://files/GW150914/strain/H1-1126259446-32.hdf5"]
+    assert resource.mime_type == "application/x-hdf5"
+
+
+@pytest.mark.parametrize(
+    ("name", "mime"),
+    [
+        ("bayestar.multiorder.fits,0", "application/fits"),
+        ("p_astro.json,1", "application/json"),
+        ("bayestar.png", "image/png"),
+        ("something.unknown", "application/octet-stream"),
+    ],
+)
+def test_mime_type_handles_versioned_names(name, mime):
+    assert server._mime_type(name) == mime

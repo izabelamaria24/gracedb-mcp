@@ -31,6 +31,21 @@ pipeline (e.g. isolating astrophysical "chirps" from instrumental glitches).
 | `get_event_labels` | GraceDB labels (data quality, review, retraction, products ready) explained in plain English. |
 | `check_data_availability` | Which detectors have public GWOSC strain for an event or GPS span, before you download. |
 
+## Resources
+
+Every file the server downloads (up to 50 MB) is also an MCP resource, so an agent can read it
+without filesystem access, which is useful when the server runs in Docker or on another machine:
+
+```text
+gracedb://files/S190814bv/p_astro.json                       (application/json)
+gracedb://files/S190814bv/bayestar.png                       (image/png)
+gracedb://files/GW150914/strain/H1-1126259458-8.hdf5         (application/x-hdf5)
+```
+
+The download tools return these URIs, clients are notified when new files appear, and files
+already in the data directory are listed at startup. Larger files, such as full
+parameter-estimation posteriors, stay on disk only.
+
 ### ⚠️ Important: where strain data actually comes from
 
 GraceDB does **not** host raw strain data. It stores *event artifacts* (skymaps, classifications,
@@ -180,7 +195,6 @@ python scripts/train_agent.py --algo ppo mlp cnn --verbose
 ## Roadmap
 
 - Streamable-HTTP transport (in addition to stdio) for remote deployments.
-- MCP **resources** for cached skymaps and p_astro files.
 
 ## Disclaimer
 

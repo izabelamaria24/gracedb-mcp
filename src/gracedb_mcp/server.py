@@ -13,6 +13,11 @@ Tools
 - ``get_event_labels``     GraceDB labels (data quality, review, retraction) with meanings.
 - ``check_data_availability`` Which detectors have public GWOSC strain for a time span.
 
+Resources
+---------
+Every downloaded file up to 50 MB is also a resource at ``gracedb://files/<event>/<file>``,
+so clients can read sky maps, p_astro and strain without filesystem access.
+
 Note on strain data: GraceDB does **not** host raw strain. Public strain lives at
 GWOSC and is only available for released observing runs, so ``download_strain_data``
 works for archival events, not fresh low-latency alerts.
@@ -27,18 +32,27 @@ import os
 import re
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
+import anyio.from_thread
 from dotenv import load_dotenv
 from gwosc import timeline
-from mcp.server.mcpserver import MCPServer
+from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.mcpserver.resources import FileResource
 
 from . import gwosc_catalog
 from .gracedb_client import GraceDbClient
 
 load_dotenv()
 
-mcp = MCPServer(name="gracedb-mcp", version=importlib.metadata.version("gracedb-mcp"))
+# Re-downloading a file re-registers the same URI, which is expected.
+mcp = MCPServer(
+    name="gracedb-mcp",
+    version=importlib.metadata.version("gracedb-mcp"),
+    warn_on_duplicate_resources=False,
+)
 _client = GraceDbClient()
 
 # The Docker image sets GRACEDB_MCP_DATA_DIR=/data.
@@ -51,6 +65,69 @@ _SAFE_ID = re.compile(r"^[A-Za-z0-9_\-]{1,64}$")
 def _check_id(event_id: str) -> None:
     if not _SAFE_ID.match(event_id):
         raise ValueError(f"invalid event id: {event_id!r}")
+
+
+# Larger files (e.g. full PE posteriors) are too big to pass through an agent's context.
+MAX_RESOURCE_BYTES = 50 * 1024 * 1024
+_MIME_TYPES = {
+    ".json": "application/json",
+    ".xml": "application/xml",
+    ".txt": "text/plain",
+    ".log": "text/plain",
+    ".csv": "text/csv",
+    ".html": "text/html",
+    ".png": "image/png",
+    ".fits": "application/fits",
+    ".gz": "application/gzip",
+    ".hdf5": "application/x-hdf5",
+    ".h5": "application/x-hdf5",
+}
+
+
+def _mime_type(filename: str) -> str:
+    # GraceDB versions files as "name.ext,N".
+    suffix = Path(filename.split(",")[0]).suffix.lower()
+    return _MIME_TYPES.get(suffix, "application/octet-stream")
+
+
+def _register_file(path: str) -> str | None:
+    """Expose a downloaded file as an MCP resource and return its URI (None if too large)."""
+    file = Path(path).resolve()
+    if not file.is_file() or file.name.startswith("."):
+        return None
+    size = file.stat().st_size
+    if size > MAX_RESOURCE_BYTES:
+        return None
+    relative = file.relative_to(Path(DATA_DIR).resolve()).as_posix()
+    uri = f"gracedb://files/{quote(relative, safe='/,')}"
+    mcp.add_resource(
+        FileResource(
+            uri=uri,
+            name=relative,
+            description=f"Downloaded file, {size} bytes.",
+            mime_type=_mime_type(file.name),
+            path=file,
+        )
+    )
+    return uri
+
+
+def _register_existing_files() -> None:
+    for root, _, names in os.walk(DATA_DIR):
+        for name in names:
+            _register_file(os.path.join(root, name))
+
+
+def _notify_resources_changed(ctx: Context | None) -> None:
+    if ctx is None:
+        return
+
+    async def notify() -> None:
+        await ctx.notify_resources_changed()  # 2026-07-28 clients, via subscriptions/listen
+        await ctx.session.send_resource_list_changed()  # clients on earlier protocol versions
+
+    # Sync tools run in a worker thread; the notification is sent from the event loop.
+    anyio.from_thread.run(notify)
 
 
 def _build_query(
@@ -166,6 +243,7 @@ def get_event_metadata(graceid: str) -> dict[str, Any]:
 def download_event_files(
     graceid: str,
     filenames: list[str] | None = None,
+    ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Download GraceDB artifacts (skymaps, p_astro, PE results, logs) for an event.
 
@@ -178,7 +256,9 @@ def download_event_files(
             file attached to the superevent.
 
     Returns:
-        A dict mapping each requested filename to the local path it was saved to.
+        A dict mapping each requested filename to the local path it was saved to,
+        and ``resources`` mapping it to a ``gracedb://`` URI readable over MCP
+        (files over 50 MB are local only).
     """
     _check_id(graceid)
     available = _client.list_files(graceid)
@@ -199,7 +279,10 @@ def download_event_files(
         except Exception as exc:  # noqa: BLE001 - surface per-file failures without aborting the batch
             errors[name] = str(exc)
 
-    return {"superevent_id": graceid, "saved": saved, "errors": errors}
+    resources = {name: uri for name, path in saved.items() if (uri := _register_file(path))}
+    if resources:
+        _notify_resources_changed(ctx)
+    return {"superevent_id": graceid, "saved": saved, "resources": resources, "errors": errors}
 
 
 def _pick_gwosc_file(urls: list[str], start: float, end: float) -> str | None:
@@ -237,6 +320,7 @@ def download_strain_data(
     duration: float = 32.0,
     sample_rate: int = 4096,
     gps_time: float | None = None,
+    ctx: Context | None = None,
 ) -> dict[str, Any]:
     """Download public strain time series around an event from GWOSC.
 
@@ -259,7 +343,8 @@ def download_strain_data(
             GraceDB superevents.
 
     Returns:
-        A dict mapping each detector to the saved ``.hdf5`` strain file path.
+        A dict mapping each detector to the saved ``.hdf5`` strain file path, and
+        ``resources`` mapping it to a ``gracedb://`` URI readable over MCP.
     """
     _check_id(graceid)
     if importlib.util.find_spec("gwpy") is None:
@@ -293,11 +378,15 @@ def download_strain_data(
         except Exception as exc:  # noqa: BLE001 - data may not be public for this GPS time
             errors[ifo] = str(exc)
 
+    resources = {ifo: uri for ifo, path in saved.items() if (uri := _register_file(path))}
+    if resources:
+        _notify_resources_changed(ctx)
     return {
         "superevent_id": graceid,
         "t_0": t_0,
         "gps_window": [start_gps, end_gps],
         "saved": saved,
+        "resources": resources,
         "errors": errors,
     }
 
@@ -590,6 +679,7 @@ def check_data_availability(
 
 def main() -> None:
     """Entry point: run the MCP server over stdio."""
+    _register_existing_files()
     mcp.run()
 
 
