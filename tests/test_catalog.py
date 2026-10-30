@@ -5,7 +5,8 @@ from __future__ import annotations
 import pytest
 from test_tools import FakeGraceDbClient
 
-from gracedb_mcp import gwosc_catalog, server
+from gracedb_mcp import app, gwosc_catalog
+from gracedb_mcp.tools import alerts, catalog, strain
 
 
 def _record(name, version, catalog, gps, **params):
@@ -78,7 +79,7 @@ def fake_client(monkeypatch):
         {"name": "DQOK", "created": "2019-08-14 21:40:00 UTC", "creator": "a@b.org"},
         {"name": "MYSTERY", "created": "2019-08-16 00:00:00 UTC", "creator": "a@b.org"},
     ]
-    monkeypatch.setattr(server, "_client", client)
+    monkeypatch.setattr(app, "client", client)
     return client
 
 
@@ -95,20 +96,20 @@ def test_all_events_filters_catalog_before_versions(gwosc):
 
 
 def test_search_catalog_events_filters(gwosc):
-    result = server.search_catalog_events(min_snr=20, max_distance_mpc=300)
+    result = catalog.search_catalog_events(min_snr=20, max_distance_mpc=300)
     assert [e["name"] for e in result["events"]] == ["GW190814"]
 
-    result = server.search_catalog_events(min_total_mass=20, max_results=1)
+    result = catalog.search_catalog_events(min_total_mass=20, max_results=1)
     assert result["count"] == 2
     assert len(result["events"]) == 1
 
     # Events missing the filtered parameter are excluded.
-    result = server.search_catalog_events(catalog="GWTC-2", min_p_astro=0.5)
+    result = catalog.search_catalog_events(catalog="GWTC-2", min_p_astro=0.5)
     assert result["count"] == 0
 
 
 def test_search_catalog_events_unknown_catalog(gwosc):
-    result = server.search_catalog_events(catalog="GWTC-99")
+    result = catalog.search_catalog_events(catalog="GWTC-99")
     assert "error" in result
     assert "GWTC-3-confident" in result["catalogs"]
 
@@ -121,7 +122,7 @@ def test_summarise_intervals():
 
 
 def test_get_catalog_event_by_name(gwosc):
-    result = server.get_catalog_event("GW190814")
+    result = catalog.get_catalog_event("GW190814")
     assert result["gracedb_id"] == "S190814bv"
     assert result["mass_1_source"]["interval_90"] == [22.2, 24.3]
     assert result["strain_files"] == [
@@ -133,26 +134,26 @@ def test_get_catalog_event_by_name(gwosc):
 
 
 def test_get_catalog_event_by_superevent_id(gwosc, fake_client):
-    assert server.get_catalog_event("S190814bv")["name"] == "GW190814"
+    assert catalog.get_catalog_event("S190814bv")["name"] == "GW190814"
 
 
 def test_get_catalog_event_unpublished_superevent(gwosc, fake_client):
-    result = server.get_catalog_event("S230518h")
+    result = catalog.get_catalog_event("S230518h")
     assert "not in any GWOSC catalogue" in result["error"]
 
 
 def test_get_catalog_event_unknown_name_suggests(gwosc):
-    result = server.get_catalog_event("GW200105")
+    result = catalog.get_catalog_event("GW200105")
     assert result["similar"] == ["GW200105_162426"]
 
 
 def test_get_catalog_event_rejects_unsafe_name(gwosc):
     with pytest.raises(ValueError):
-        server.get_catalog_event("../GW150914")
+        catalog.get_catalog_event("../GW150914")
 
 
 def test_get_event_labels(fake_client):
-    result = server.get_event_labels("S190814bv")
+    result = alerts.get_event_labels("S190814bv")
     assert [label["name"] for label in result["labels"]] == ["DQOK", "PE_READY", "MYSTERY"]
     assert result["labels"][0]["meaning"].startswith("Automated data-quality")
     assert result["labels"][2]["meaning"] is None
@@ -173,14 +174,14 @@ def segments(monkeypatch):
             raise value
         return value
 
-    monkeypatch.setattr(server.timeline, "get_segments", get_segments)
+    monkeypatch.setattr(strain.timeline, "get_segments", get_segments)
     return table, calls
 
 
 def test_availability_by_gps_span(segments):
     table, calls = segments
     table.update(H1=[(1000, 1100)], L1=[(1000, 1050)], K1=RuntimeError("timeout"))
-    result = server.check_data_availability(gps_start=1000.4, gps_end=1099.6)
+    result = strain.check_data_availability(gps_start=1000.4, gps_end=1099.6)
 
     assert result["available"] == ["H1"]
     assert result["detectors"]["L1"]["coverage"] == 0.5
@@ -193,7 +194,7 @@ def test_availability_by_gps_span(segments):
 def test_availability_counts_catalog_event_files(gwosc, segments):
     table, _ = segments
     table.update(L1=[(1249852249, 1249852265)])  # H1 has no segment, but has an event file
-    result = server.check_data_availability(event="GW190814", window=16, detectors=["H1", "L1"])
+    result = strain.check_data_availability(event="GW190814", window=16, detectors=["H1", "L1"])
 
     assert result["t_0"] == 1249852257.0
     assert result["available"] == ["H1", "L1"]
@@ -202,13 +203,13 @@ def test_availability_counts_catalog_event_files(gwosc, segments):
 
 
 def test_availability_by_superevent_id(gwosc, fake_client, segments):
-    result = server.check_data_availability(event="S190814bv", window=8, detectors=["H1"])
+    result = strain.check_data_availability(event="S190814bv", window=8, detectors=["H1"])
     assert result["catalog_event_files"]["event"] == "GW190814"
     assert result["available"] == ["H1"]
 
 
 def test_availability_unreleased_span_has_note(gwosc, fake_client, segments):
-    result = server.check_data_availability(event="S230518h")
+    result = strain.check_data_availability(event="S230518h")
     assert result["available"] == []
     assert "catalog_event_files" not in result
     assert "not be released" in result["note"]
@@ -224,5 +225,5 @@ def test_availability_unreleased_span_has_note(gwosc, fake_client, segments):
     ],
 )
 def test_availability_rejects_bad_input(segments, kwargs):
-    assert "error" in server.check_data_availability(**kwargs)
+    assert "error" in strain.check_data_availability(**kwargs)
     assert segments[1] == []

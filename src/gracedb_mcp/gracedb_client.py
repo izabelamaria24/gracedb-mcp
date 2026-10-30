@@ -2,13 +2,14 @@
 
 Centralises client construction (auth + service URL) and exposes a few
 convenience helpers used by the MCP tools. Keeping the GraceDB specifics here
-means the MCP layer in ``server.py`` stays small and testable.
+means the MCP tools in ``tools/`` stay small and testable.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
 from dataclasses import dataclass
 from typing import Any
 
@@ -98,12 +99,18 @@ class GraceDbClient:
     def download_file(self, superevent_id: str, filename: str, dest_path: str) -> str:
         response = self.client.files(superevent_id, filename)
         with open(dest_path, "wb") as handle:
-            handle.write(response.read())
+            # Stream: PE result files can be hundreds of MB.
+            shutil.copyfileobj(response, handle, length=1024 * 1024)
         return dest_path
 
-    def get_p_astro(self, superevent_id: str) -> dict[str, Any] | None:
-        """Return source-classification probabilities, or ``None`` if not published."""
-        available = self.list_files(superevent_id)
+    def get_p_astro(
+        self, superevent_id: str, files: dict[str, str] | None = None
+    ) -> dict[str, Any] | None:
+        """Return source-classification probabilities, or ``None`` if not published.
+
+        Pass ``files`` (from :meth:`list_files`) to skip listing them again.
+        """
+        available = files if files is not None else self.list_files(superevent_id)
         for candidate in P_ASTRO_FILENAMES:
             for name in available:
                 if name.endswith(candidate):

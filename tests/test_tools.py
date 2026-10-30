@@ -9,7 +9,8 @@ from typing import Any
 
 import pytest
 
-from gracedb_mcp import server
+from gracedb_mcp import app, resources, server
+from gracedb_mcp.tools import alerts, strain
 
 
 class FakeGraceDbClient:
@@ -43,7 +44,7 @@ class FakeGraceDbClient:
     def search_superevents(self, query: str, *, max_results: int = 20, columns=None):
         return self.superevents[:max_results]
 
-    def get_p_astro(self, superevent_id: str):
+    def get_p_astro(self, superevent_id: str, files=None):
         return self.p_astro_by_id.get(superevent_id)
 
     def get_superevent(self, superevent_id: str) -> dict[str, Any]:
@@ -69,8 +70,8 @@ class FakeGraceDbClient:
 @pytest.fixture
 def fake_client(monkeypatch, tmp_path):
     client = FakeGraceDbClient()
-    monkeypatch.setattr(server, "_client", client)
-    monkeypatch.setattr(server, "DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(app, "client", client)
+    monkeypatch.setattr(app, "DATA_DIR", str(tmp_path))
     return client
 
 
@@ -78,7 +79,7 @@ def fake_client(monkeypatch, tmp_path):
 
 
 def test_build_query_combines_clauses():
-    query = server._build_query("2023-05-01", "2023-06-01", 1e-8, "Production")
+    query = alerts._build_query("2023-05-01", "2023-06-01", 1e-8, "Production")
     assert "created: 2023-05-01 .. 2023-06-01" in query
     assert "far < 1e-08" in query
     assert "category: Production" in query
@@ -88,9 +89,9 @@ def test_build_query_open_ended():
     # GraceDB rejects "created: X ..", so the missing bound is filled in.
     assert re.fullmatch(
         r"created: 2023-05-01 \.\. \d{4}-\d\d-\d\d \d\d:\d\d:\d\d",
-        server._build_query("2023-05-01", None, None, ""),
+        alerts._build_query("2023-05-01", None, None, ""),
     )
-    assert server._build_query(None, "2023-06-01", None, "") == "created: 2015-01-01 .. 2023-06-01"
+    assert alerts._build_query(None, "2023-06-01", None, "") == "created: 2015-01-01 .. 2023-06-01"
 
 
 @pytest.mark.parametrize(
@@ -104,48 +105,108 @@ def test_build_query_open_ended():
     ],
 )
 def test_gracedb_time_normalises_iso(value, expected):
-    assert server._gracedb_time(value) == expected
+    assert alerts._gracedb_time(value) == expected
 
 
 def test_astro_probability():
-    assert server._astro_probability({"Terrestrial": 0.04}) == 0.96
-    assert server._astro_probability({"BBH": 1.0}) is None
-    assert server._astro_probability(None) is None
+    assert alerts._astro_probability({"Terrestrial": 0.04}) == 0.96
+    assert alerts._astro_probability({"BBH": 1.0}) is None
+    assert alerts._astro_probability(None) is None
 
 
 # -- Tools ---------------------------------------------------------------
 
 
 def test_search_superevents_basic(fake_client):
-    result = server.search_superevents(start="2023-05-01", end="2023-06-01")
+    result = alerts.search_superevents(start="2023-05-01", end="2023-06-01")
     assert result["count"] == 2
     assert result["superevents"][0]["superevent_id"] == "S230518h"
 
 
 def test_search_superevents_min_confidence_filters(fake_client):
-    result = server.search_superevents(min_confidence=0.9)
+    result = alerts.search_superevents(min_confidence=0.9)
     ids = [e["superevent_id"] for e in result["superevents"]]
     assert ids == ["S230518h"]  # S230519a has astro_probability 0.10, filtered out
     assert result["superevents"][0]["astro_probability"] == 0.96
 
 
 def test_get_event_metadata(fake_client):
-    meta = server.get_event_metadata("S230518h")
+    meta = alerts.get_event_metadata("S230518h")
     assert meta["superevent_id"] == "S230518h"
     assert meta["classification"]["BBH"] == 0.95
     assert meta["astro_probability"] == 0.96
     assert "bayestar.fits.gz" in meta["available_files"]
 
 
+def test_get_event_metadata_lists_files_once(fake_client, monkeypatch):
+    calls = []
+    list_files = fake_client.list_files
+    monkeypatch.setattr(fake_client, "list_files", lambda sid: calls.append(sid) or list_files(sid))
+    passed = []
+    monkeypatch.setattr(
+        fake_client, "get_p_astro", lambda sid, files=None: passed.append(files) or None
+    )
+    alerts.get_event_metadata("S230518h")
+    assert calls == ["S230518h"]
+    assert passed and passed[0] is not None  # the listing was reused for p_astro
+
+
+def test_map_concurrently_keeps_order_and_reports_errors():
+    def work(n):
+        if n == 3:
+            raise RuntimeError("boom")
+        return n * n
+
+    results, errors = app.map_concurrently(work, [5, 1, 3, 2, 1])
+    assert list(results) == [5, 1, 2]  # input order, duplicates collapsed
+    assert results == {5: 25, 1: 1, 2: 4}
+    assert list(errors) == [3] and str(errors[3]) == "boom"
+    assert app.map_concurrently(work, []) == ({}, {})
+
+
+def test_download_event_files_reports_each_failure(fake_client, monkeypatch):
+    download = fake_client.download_file
+
+    def flaky(sid, name, dest):
+        if name == "bayestar.fits.gz":
+            raise OSError("connection reset")
+        return download(sid, name, dest)
+
+    monkeypatch.setattr(fake_client, "download_file", flaky)
+    result = alerts.download_event_files("S230518h")
+    assert list(result["saved"]) == ["p_astro.json"]
+    assert result["errors"] == {"bayestar.fits.gz": "connection reset"}
+
+
+def test_real_client_streams_downloads(tmp_path, monkeypatch):
+    import io
+
+    from gracedb_mcp.gracedb_client import GraceDbClient
+
+    reads: list[int] = []
+
+    class Response(io.BytesIO):
+        def read(self, size=-1):
+            reads.append(size)
+            return super().read(size)
+
+    client = GraceDbClient()
+    body = b"x" * (3 * 1024 * 1024)
+    monkeypatch.setattr(client, "_client", type("G", (), {"files": lambda *_: Response(body)})())
+    dest = client.download_file("S1", "big.hdf5", str(tmp_path / "big.hdf5"))
+    assert (tmp_path / "big.hdf5").read_bytes() == body and dest.endswith("big.hdf5")
+    assert reads and -1 not in reads  # never read the whole body at once
+
+
 def test_download_event_files_specific(fake_client):
-    result = server.download_event_files("S230518h", filenames=["p_astro.json"])
+    result = alerts.download_event_files("S230518h", filenames=["p_astro.json"])
     assert "p_astro.json" in result["saved"]
     assert result["errors"] == {}
     assert os.path.basename(result["saved"]["p_astro.json"]) == "p_astro.json"
 
 
 def test_download_event_files_missing(fake_client):
-    result = server.download_event_files("S230518h", filenames=["nope.json"])
+    result = alerts.download_event_files("S230518h", filenames=["nope.json"])
     assert "nope.json" in result["errors"]
     assert result["saved"] == {}
 
@@ -153,9 +214,9 @@ def test_download_event_files_missing(fake_client):
 @pytest.mark.parametrize("bad_id", ["../etc", "a/b", "", "x" * 65])
 def test_rejects_unsafe_event_ids(fake_client, bad_id):
     with pytest.raises(ValueError):
-        server.download_event_files(bad_id)
+        alerts.download_event_files(bad_id)
     with pytest.raises(ValueError):
-        server.download_strain_data(bad_id, gps_time=1126259462.4)
+        strain.download_strain_data(bad_id, gps_time=1126259462.4)
 
 
 def test_download_strain_data_gps_time_skips_gracedb(fake_client, monkeypatch):
@@ -170,9 +231,9 @@ def test_download_strain_data_gps_time_skips_gracedb(fake_client, monkeypatch):
         calls.append((ifo, start, end))
         return FakeSeries()
 
-    monkeypatch.setattr(server, "_fetch_strain", fake_fetch)
+    monkeypatch.setattr(strain, "_fetch_strain", fake_fetch)
     # GW150914 is not a superevent; the fake client would raise KeyError if queried.
-    result = server.download_strain_data("GW150914", duration=4, gps_time=1126259462.4)
+    result = strain.download_strain_data("GW150914", duration=4, gps_time=1126259462.4)
 
     assert result["t_0"] == 1126259462.4
     assert result["gps_window"] == [1126259460.4, 1126259464.4]
@@ -183,11 +244,11 @@ def test_download_strain_data_gps_time_skips_gracedb(fake_client, monkeypatch):
 def test_pick_gwosc_file_prefers_shortest_covering_file():
     hour = "https://gwosc.org/archive/H-H1_GWOSC_4KHZ_R1-1256777520-4096.hdf5"
     event = "https://gwosc.org/eventapi/H-H1_GWOSC_4KHZ_R1-1256779552-32.hdf5"
-    assert server._pick_gwosc_file([hour, event], 1256779553.0, 1256779583.0) == event
+    assert strain._pick_gwosc_file([hour, event], 1256779553.0, 1256779583.0) == event
     # Window starts before the 32 s file, so only the hour file covers it.
-    assert server._pick_gwosc_file([hour, event], 1256779551.5, 1256779581.5) == hour
-    assert server._pick_gwosc_file([event], 1256779500.0, 1256779530.0) is None
-    assert server._pick_gwosc_file(["https://example/not-a-gwosc-name.hdf5"], 0, 1) is None
+    assert strain._pick_gwosc_file([hour, event], 1256779551.5, 1256779581.5) == hour
+    assert strain._pick_gwosc_file([event], 1256779500.0, 1256779530.0) is None
+    assert strain._pick_gwosc_file(["https://example/not-a-gwosc-name.hdf5"], 0, 1) is None
 
 
 def test_server_reports_package_version():
@@ -237,24 +298,24 @@ def test_downloaded_files_are_readable_resources(fake_client):
 
 
 def test_large_and_hidden_files_are_not_resources(fake_client, tmp_path, monkeypatch):
-    monkeypatch.setattr(server, "MAX_RESOURCE_BYTES", 4)
-    result = server.download_event_files("S230518h", filenames=["p_astro.json"])
+    monkeypatch.setattr(resources, "MAX_RESOURCE_BYTES", 4)
+    result = alerts.download_event_files("S230518h", filenames=["p_astro.json"])
     assert result["saved"] and result["resources"] == {}
     hidden = tmp_path / ".DS_Store"
     hidden.write_bytes(b"")
-    assert server._register_file(str(hidden)) is None
+    assert resources.register_file(str(hidden)) is None
 
 
 def test_existing_downloads_are_registered_at_startup(fake_client, tmp_path):
     strain = tmp_path / "GW150914" / "strain"
     strain.mkdir(parents=True)
     (strain / "H1-1126259446-32.hdf5").write_bytes(b"\x89HDF")
-    server._register_existing_files()
+    resources.register_existing_files()
 
     import anyio
 
-    resources = {str(r.uri): r for r in anyio.run(server.mcp.list_resources)}
-    resource = resources["gracedb://files/GW150914/strain/H1-1126259446-32.hdf5"]
+    registered = {str(r.uri): r for r in anyio.run(server.mcp.list_resources)}
+    resource = registered["gracedb://files/GW150914/strain/H1-1126259446-32.hdf5"]
     assert resource.mime_type == "application/x-hdf5"
 
 
@@ -268,7 +329,7 @@ def test_existing_downloads_are_registered_at_startup(fake_client, tmp_path):
     ],
 )
 def test_mime_type_handles_versioned_names(name, mime):
-    assert server._mime_type(name) == mime
+    assert resources.mime_type(name) == mime
 
 
 # -- Prompts -------------------------------------------------------------

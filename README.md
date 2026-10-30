@@ -195,15 +195,15 @@ A real session (tool results trimmed to the key fields).
 | `download_event_files("S190814bv", ["bayestar.png"])` | `gracedb://files/S190814bv/bayestar.png` (sky map, viewable as an image) |
 | `get_catalog_event("S190814bv")` | GW190814 in GWTC-2.1: 23.3 (21.9–24.7) and 2.6 (2.5–2.7) solar masses, 230 (180–270) Mpc, SNR 25.3 |
 | `check_data_availability(event="S190814bv")` | Public strain from H1, L1 and Virgo (H1 only via the event's own file) |
-| `download_strain_data("S190814bv", ["L1", "V1"], duration=32)` | `gracedb://files/S190814bv/strain/L1-1249852241-32.hdf5`, and the same for V1 |
+| `download_strain_data("S190814bv", ["H1", "L1", "V1"], duration=30)` | `gracedb://files/S190814bv/strain/L1-1249852242-30.hdf5`, and the same for H1 and V1 |
 
 > **Agent:** Yes, it's real and extremely significant (false-alarm rate about 2×10⁻³³ Hz). It
 > passed data-quality checks, a human advocate approved it, and it was never retracted. The
 > alert called it a neutron star–black hole merger (99.8%). The final analysis (GW190814)
 > found a 23-solar-mass black hole and a 2.6-solar-mass companion, which is too heavy for
 > most neutron-star models and too light for known black holes, so its nature is still open.
-> It was 230 Mpc away. Here's the sky map, and I've saved 32 s of LIGO Livingston and Virgo
-> data around the merger.
+> It was 230 Mpc away. Here's the sky map, and I've saved 30 s of data from both LIGO
+> detectors and Virgo around the merger.
 
 ## RL environment (experimental)
 

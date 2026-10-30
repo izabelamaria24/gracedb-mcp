@@ -7,7 +7,7 @@ knowing which tools to chain.
 
 | Form | Where it lives | Reaches | Use for |
 | --- | --- | --- | --- |
-| **MCP prompt** | `@mcp.prompt()` in `server.py` | Every MCP client (slash commands in Claude Desktop, VS Code, ...) | Workflows that only need this server's tools |
+| **MCP prompt** | `@app.mcp.prompt()` in `prompts.py` | Every MCP client (slash commands in Claude Desktop, VS Code, ...) | Workflows that only need this server's tools |
 | **Agent skill** | `skills/<name>/SKILL.md` in this repo | Claude Code, Copilot and other skill-aware agents; listable on mcprush | Workflows that also need the agent's own abilities (running Python, writing files) |
 
 ## Workflows
