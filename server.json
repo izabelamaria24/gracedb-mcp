@@ -7,12 +7,12 @@
     "url": "https://github.com/izabelamaria24/gracedb-mcp",
     "source": "github"
   },
-  "version": "0.2.1",
+  "version": "0.2.2",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "gracedb-mcp",
-      "version": "0.2.1",
+      "version": "0.2.2",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
@@ -40,7 +40,7 @@
     },
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/izabelamaria24/gracedb-mcp:0.2.1",
+      "identifier": "ghcr.io/izabelamaria24/gracedb-mcp:0.2.2",
       "runtimeHint": "docker",
       "transport": {
         "type": "stdio"
