@@ -10,6 +10,8 @@ authors:
   - given-names: Izabela
     family-names: Jilavu
     alias: izabelamaria24
+# Concept DOI: resolves to the latest archived release on Zenodo.
+doi: 10.5281/zenodo.23810872
 repository-code: "https://github.com/izabelamaria24/gracedb-mcp"
 url: "https://pypi.org/project/gracedb-mcp/"
 license: GPL-3.0-or-later

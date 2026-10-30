@@ -3,6 +3,7 @@
 [![PyPI](https://img.shields.io/pypi/v/gracedb-mcp)](https://pypi.org/project/gracedb-mcp/)
 [![CI](https://github.com/izabelamaria24/gracedb-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/izabelamaria24/gracedb-mcp/actions/workflows/ci.yml)
 [![License](https://img.shields.io/pypi/l/gracedb-mcp)](https://github.com/izabelamaria24/gracedb-mcp/blob/main/LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23810872.svg)](https://doi.org/10.5281/zenodo.23810872)
 [![GraceDB MCP on mcprush](https://mcprush.com/badge/gracedb-mcp/score.svg)](https://mcprush.com/to/gracedb-mcp?ref=badge)
 
 <!-- mcp-name: io.github.izabelamaria24/gracedb-mcp -->
@@ -192,7 +193,8 @@ If you publish results using data fetched by this server, cite the data sources:
 
 ## Citing
 
-If this server helped your work, please cite it. GitHub's **Cite this repository** button
+If this server helped your work, please cite it: [doi:10.5281/zenodo.23810872](https://doi.org/10.5281/zenodo.23810872)
+(all versions; Zenodo also lists a DOI per release). GitHub's **Cite this repository** button
 (from [`CITATION.cff`](https://github.com/izabelamaria24/gracedb-mcp/blob/main/CITATION.cff))
 gives APA and BibTeX.
 
