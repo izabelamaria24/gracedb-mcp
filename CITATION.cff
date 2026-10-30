@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using these metadata."
+type: software
+title: "GraceDB MCP: a Model Context Protocol server for gravitational-wave alerts"
+abstract: >-
+  An open-source Model Context Protocol (MCP) server that gives LLM agents access to
+  LIGO/Virgo/KAGRA gravitational-wave alerts from GraceDB, published catalogue events
+  and public strain data from the Gravitational Wave Open Science Center (GWOSC).
+authors:
+  - given-names: Izabela
+    family-names: Jilavu
+    alias: izabelamaria24
+repository-code: "https://github.com/izabelamaria24/gracedb-mcp"
+url: "https://pypi.org/project/gracedb-mcp/"
+license: GPL-3.0-or-later
+keywords:
+  - gravitational waves
+  - LIGO
+  - Virgo
+  - KAGRA
+  - GraceDB
+  - GWOSC
+  - Model Context Protocol
+  - LLM agents

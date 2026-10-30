@@ -190,6 +190,12 @@ If you publish results using data fetched by this server, cite the data sources:
 [GWOSC](https://gwosc.org/acknowledge/) (CC BY 4.0) and, for glitch labels,
 [Gravity Spy](https://zenodo.org/records/1486046).
 
+## Citing
+
+If this server helped your work, please cite it. GitHub's **Cite this repository** button
+(from [`CITATION.cff`](https://github.com/izabelamaria24/gracedb-mcp/blob/main/CITATION.cff))
+gives APA and BibTeX.
+
 ## License
 
 [GPL-3.0-or-later](LICENSE), matching its core dependencies `ligo-gracedb` and `gwpy`.
