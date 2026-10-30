@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import re
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -83,8 +85,26 @@ def test_build_query_combines_clauses():
 
 
 def test_build_query_open_ended():
-    assert server._build_query("2023-05-01", None, None, "") == "created: 2023-05-01 .."
-    assert server._build_query(None, "2023-06-01", None, "") == "created: .. 2023-06-01"
+    # GraceDB rejects "created: X ..", so the missing bound is filled in.
+    assert re.fullmatch(
+        r"created: 2023-05-01 \.\. \d{4}-\d\d-\d\d \d\d:\d\d:\d\d",
+        server._build_query("2023-05-01", None, None, ""),
+    )
+    assert server._build_query(None, "2023-06-01", None, "") == "created: 2015-01-01 .. 2023-06-01"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("2023-05-18", "2023-05-18"),
+        ("2023-05-18T06:30:00", "2023-05-18 06:30:00"),
+        ("2023-05-18T06:30:00Z", "2023-05-18 06:30:00"),
+        ("2023-05-18T08:30:00+02:00", "2023-05-18 06:30:00"),
+        ("2023-05-18 06:30", "2023-05-18 06:30:00"),
+    ],
+)
+def test_gracedb_time_normalises_iso(value, expected):
+    assert server._gracedb_time(value) == expected
 
 
 def test_astro_probability():
@@ -249,3 +269,91 @@ def test_existing_downloads_are_registered_at_startup(fake_client, tmp_path):
 )
 def test_mime_type_handles_versioned_names(name, mime):
     assert server._mime_type(name) == mime
+
+
+# -- Prompts -------------------------------------------------------------
+
+
+def _prompt_text(name, arguments):
+    """Render a prompt through a real client; returns its text, or the MCPError raised."""
+    import anyio
+    from mcp.client.client import Client
+    from mcp.shared.exceptions import MCPError
+
+    async def render():
+        async with Client(server.mcp) as client:
+            try:
+                result = await client.get_prompt(name, arguments)
+            except MCPError as error:
+                return error
+            return result.messages[0].content.text
+
+    return anyio.run(render)
+
+
+# Result fields the prompts mention; every other backticked snake_case name must be a tool.
+PROMPT_FIELDS = {"available_files", "gracedb_id", "p_astro"}
+
+
+PROMPT_CASES = [
+    ("alert_briefing", {}),
+    ("alert_briefing", {"hours": "6", "max_far": "1e-8"}),
+    ("event_dossier", {"event": "GW190814"}),
+    ("event_dossier", {"event": "S190814bv", "audience": "public"}),
+    ("alert_vs_catalog", {"event": "S190814bv"}),
+    ("alert_vs_catalog", {"catalog": "GWTC-3-confident", "max_events": "5"}),
+]
+
+
+def test_prompts_are_listed():
+    import anyio
+
+    names = {p.name for p in anyio.run(server.mcp.list_prompts)}
+    assert names == {"alert_briefing", "event_dossier", "alert_vs_catalog"}
+
+
+@pytest.mark.parametrize(("name", "arguments"), PROMPT_CASES)
+def test_prompts_only_name_existing_tools(name, arguments):
+    import anyio
+
+    tools = {t.name for t in anyio.run(server.mcp.list_tools)}
+    text = _prompt_text(name, arguments)
+    named = {word for word in re.findall(r"`([a-z_]+)`", text) if "_" in word} - PROMPT_FIELDS
+    assert named, "prompt should name the tools to call"
+    assert named <= tools, f"unknown tools: {named - tools}"
+
+
+def test_alert_briefing_uses_a_closed_window_gracedb_accepts():
+    text = _prompt_text("alert_briefing", {"hours": "6"})
+    window = re.search(r'start="([^"]+)", end="([^"]+)"', text)
+    start, end = (
+        datetime.strptime(v, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        for v in window.groups()
+    )
+    assert end - start == timedelta(hours=6)
+
+
+def test_prompt_arguments_reach_the_text():
+    assert "GWTC-3-confident" in _prompt_text("alert_vs_catalog", {"catalog": "GWTC-3-confident"})
+    assert "no jargon" in _prompt_text("event_dossier", {"event": "GW150914", "audience": "public"})
+
+
+@pytest.mark.parametrize(
+    ("name", "arguments", "message"),
+    [
+        ("event_dossier", {"event": "../etc"}, "invalid event name"),
+        ("event_dossier", {"event": "GW150914", "audience": "cats"}, "audience must be"),
+        ("alert_vs_catalog", {}, "exactly one of event or catalog"),
+        (
+            "alert_vs_catalog",
+            {"event": "S190814bv", "catalog": "GWTC-3-confident"},
+            "exactly one of event or catalog",
+        ),
+    ],
+)
+def test_prompts_reject_bad_arguments_clearly(name, arguments, message):
+    from mcp.shared.exceptions import MCPError
+
+    error = _prompt_text(name, arguments)
+    assert isinstance(error, MCPError)
+    assert message in str(error)

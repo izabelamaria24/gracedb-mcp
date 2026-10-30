@@ -1,0 +1,81 @@
+# Agent workflows: plan
+
+Reusable workflows built on the existing tools, so users get useful results without
+knowing which tools to chain.
+
+## Packaging
+
+| Form | Where it lives | Reaches | Use for |
+| --- | --- | --- | --- |
+| **MCP prompt** | `@mcp.prompt()` in `server.py` | Every MCP client (slash commands in Claude Desktop, VS Code, ...) | Workflows that only need this server's tools |
+| **Agent skill** | `skills/<name>/SKILL.md` in this repo | Claude Code, Copilot and other skill-aware agents; listable on mcprush | Workflows that also need the agent's own abilities (running Python, writing files) |
+
+## Workflows
+
+| # | Workflow | Form | Status |
+| --- | --- | --- | --- |
+| 1 | Alert briefing | Prompt | Done |
+| 2 | Event dossier | Prompt | Done |
+| 3 | Alert vs. final result | Prompt | Done |
+| 4 | Open-data analysis starter | Skill | Planned |
+| 5 | Alert audit | Prompt | Planned |
+
+### 1. Alert briefing (`alert_briefing`)
+
+"Anything new in the last N hours?" For astronomers deciding whether to follow up.
+
+- Arguments: `hours` (default 24), `max_far` (default 3.8e-7 Hz, about one false alarm per month).
+- Steps: `search_superevents` over the window, then for each event `get_event_labels`
+  (flag retractions, data-quality vetoes, injections), `get_event_metadata`
+  (classification, astrophysical probability), and the sky-map image via
+  `download_event_files` when `SKYMAP_READY`.
+- Output: one-line verdict per event, then a short block each: significance, class,
+  review status, sky map. Say plainly when nothing matched.
+- Guardrails: low-latency values change; no public strain exists yet for recent alerts,
+  so do not call the strain tools.
+
+### 2. Event dossier (`event_dossier`)
+
+Everything about one event, for scientists, students or the public.
+
+- Arguments: `event` (GraceDB id like `S190814bv` or catalogue name like `GW190814`),
+  `audience` (`scientist`, `student` or `public`).
+- Steps: resolve both identities (`get_catalog_event` maps either way), then
+  `get_event_metadata`, `get_event_labels`, sky map, `check_data_availability`.
+- Output sections: summary, significance and review, source (alert classification and
+  final parameters with 90% intervals), sky localisation, public data, links and the
+  GWOSC citation.
+- Guardrails: never mix up alert-time and final values; say when an event is not in a
+  catalogue yet (or was retracted).
+
+### 3. Alert vs. final result (`alert_vs_catalog`)
+
+How did the low-latency classification hold up once the final analysis was published?
+Combines GraceDB and the GWOSC catalogues, which few tools do.
+
+- Arguments: `event` for one event, or `catalog` (e.g. `GWTC-3-confident`) plus
+  `max_events` (default 15) for a batch.
+- Steps: `get_catalog_event` for final masses with 90% intervals, `get_event_metadata`
+  on the matching GraceDB id for the alert-time `p_astro`.
+- Comparison rule: a component counts as a neutron star below 3 solar masses (the
+  boundary `p_astro` uses); flag events whose 90% interval straddles it as ambiguous.
+- Output: table of event, alert class (top `p_astro` entry), final masses, final class,
+  agreement; then a short discussion of the disagreements.
+- Guardrails: events before O3 have no GraceDB superevent; skip and count them.
+
+### 4. Open-data analysis starter (skill)
+
+Find events, check data, download strain, then write and run a notebook that whitens
+the data and shows the chirp in a Q-transform. Needs code execution, hence a skill.
+
+### 5. Alert audit (`alert_audit`)
+
+For a period: how many alerts, how many retracted and why (labels), time to retraction,
+which detectors were involved.
+
+## Testing
+
+- Each prompt renders through a real MCP client (`prompts/list`, `prompts/get`).
+- Guard test: every tool a prompt names exists, so renaming a tool cannot silently break
+  a prompt.
+- Manual run of each prompt in an MCP client against live services before release.

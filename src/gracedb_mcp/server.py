@@ -18,6 +18,12 @@ Resources
 Every downloaded file up to 50 MB is also a resource at ``gracedb://files/<event>/<file>``,
 so clients can read sky maps, p_astro and strain without filesystem access.
 
+Prompts
+-------
+- ``alert_briefing``    New alerts from the last few hours, triaged.
+- ``event_dossier``     Everything about one event, for scientists, students or the public.
+- ``alert_vs_catalog``  Low-latency classification vs. final published parameters.
+
 Note on strain data: GraceDB does **not** host raw strain. Public strain lives at
 GWOSC and is only available for released observing runs, so ``download_strain_data``
 works for archival events, not fresh low-latency alerts.
@@ -41,6 +47,8 @@ from dotenv import load_dotenv
 from gwosc import timeline
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.server.mcpserver.resources import FileResource
+from mcp.shared.exceptions import MCPError
+from mcp.types import INVALID_PARAMS
 
 from . import gwosc_catalog
 from .gracedb_client import GraceDbClient
@@ -130,6 +138,20 @@ def _notify_resources_changed(ctx: Context | None) -> None:
     anyio.from_thread.run(notify)
 
 
+_GRACEDB_TIME = "%Y-%m-%d %H:%M:%S"
+_EARLIEST = "2015-01-01"  # before the first GraceDB superevent
+
+
+def _gracedb_time(value: str) -> str:
+    """Normalise an ISO-8601 time; GraceDB's parser rejects the 'T' separator and offsets."""
+    if len(value) == 10:  # plain date
+        return datetime.fromisoformat(value).date().isoformat()
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed.strftime(_GRACEDB_TIME)
+
+
 def _build_query(
     start: str | None,
     end: str | None,
@@ -138,12 +160,11 @@ def _build_query(
 ) -> str:
     """Assemble a GraceDB superevent query string from user-friendly arguments."""
     clauses: list[str] = []
-    if start and end:
-        clauses.append(f"created: {start} .. {end}")
-    elif start:
-        clauses.append(f"created: {start} ..")
-    elif end:
-        clauses.append(f"created: .. {end}")
+    # GraceDB rejects open-ended ranges, so fill in a missing bound.
+    if start or end:
+        low = _gracedb_time(start) if start else _EARLIEST
+        high = _gracedb_time(end) if end else datetime.now(timezone.utc).strftime(_GRACEDB_TIME)
+        clauses.append(f"created: {low} .. {high}")
     if max_far is not None:
         clauses.append(f"far < {max_far:g}")
     if category:
@@ -675,6 +696,115 @@ def check_data_availability(
             "or the detectors were off."
         )
     return result
+
+
+# -- Prompts: reusable workflows that chain the tools above ----------------
+
+_AUDIENCES = {
+    "scientist": "Write for a gravitational-wave scientist: precise, with units and uncertainties.",
+    "student": "Write for a physics student: explain each term (FAR, p_astro, chirp mass) briefly.",
+    "public": "Write for the general public: no jargon, use analogies, keep it short.",
+}
+
+
+def _prompt_argument_error(message: str) -> MCPError:
+    # Other exceptions reach the client as a bare "Internal server error".
+    return MCPError(code=INVALID_PARAMS, message=message)
+
+
+def _check_prompt_event(event: str) -> None:
+    if not _SAFE_ID.match(event):
+        raise _prompt_argument_error(f"invalid event name: {event!r}")
+
+
+@mcp.prompt(title="Gravitational-wave alert briefing")
+def alert_briefing(hours: int = 24, max_far: float = 3.8e-7) -> str:
+    """Brief me on new gravitational-wave alerts from the last few hours."""
+    end = datetime.now(timezone.utc)
+    start = end.timestamp() - hours * 3600
+    start_iso = datetime.fromtimestamp(start, timezone.utc).strftime(_GRACEDB_TIME)
+    return f"""Brief me on gravitational-wave alerts from the last {hours} hours.
+
+1. Call `search_superevents` with start="{start_iso}", end="{end.strftime(_GRACEDB_TIME)}" \
+and max_far={max_far:g} (about {max_far * 86400 * 30:.1g} false alarms per month).
+2. If nothing matches, say so plainly. The detectors may be between observing runs; offer \
+to list the most recent alerts instead (search without a start time, max_results=5).
+3. For each superevent:
+   - `get_event_labels`: flag retractions (ADVNO), data-quality vetoes (DQV) and \
+injections (INJ) first, because they change everything else.
+   - `get_event_metadata`: classification (BNS, NSBH, BBH, Terrestrial) and \
+astrophysical probability.
+   - If a sky-map image such as `bayestar.png` is in `available_files`, download it with \
+`download_event_files` and look at it through the returned resource URI.
+4. Report a one-line verdict per event (id, most likely class, significance, retracted or \
+not), then a short paragraph each: significance in plain terms, classification, human \
+review status, and where on the sky (from the image, if you have it).
+
+These are low-latency results that may still change. Public strain data does not exist \
+yet for recent alerts, so do not call the strain tools."""
+
+
+@mcp.prompt(title="Gravitational-wave event dossier")
+def event_dossier(event: str, audience: str = "scientist") -> str:
+    """Everything about one event: significance, review, source, sky map and data."""
+    _check_prompt_event(event)
+    if audience not in _AUDIENCES:
+        raise _prompt_argument_error(f"audience must be one of {sorted(_AUDIENCES)}")
+    return f"""Write a dossier on the gravitational-wave event {event}.
+
+1. Resolve both names: `get_catalog_event` accepts a GraceDB id (S...) or a catalogue \
+name (GW...) and returns the final parameters plus `gracedb_id`. If it reports the event \
+is not in a catalogue, say so (it may be unpublished or retracted) and continue with \
+GraceDB only.
+2. With the GraceDB superevent id (starts with S): `get_event_metadata` (alert-time \
+classification, significance, files) and `get_event_labels` (review history, retraction). \
+Events before O3 (2019) have no superevent, only an id starting with G; skip this step \
+for them.
+3. Sky map: if a sky-map image (e.g. `bayestar.png`) is available, download it with \
+`download_event_files` and view it through the returned resource URI.
+4. `check_data_availability` with event="{event}": which detectors have public strain.
+
+Structure the dossier as: Summary; Significance and review; Source (keep alert-time \
+classification and final catalogue parameters clearly separate, quoting 90% intervals); \
+Sky localisation; Public data; Links (GWOSC event page). End with: "Data: Gravitational \
+Wave Open Science Center (gwosc.org), CC BY 4.0."
+
+{_AUDIENCES[audience]}"""
+
+
+@mcp.prompt(title="Alert classification vs. final result")
+def alert_vs_catalog(
+    event: str | None = None, catalog: str | None = None, max_events: int = 15
+) -> str:
+    """Compare low-latency alert classifications with final published parameters."""
+    if (event is None) == (catalog is None):
+        raise _prompt_argument_error("give exactly one of event or catalog")
+    if event is not None:
+        _check_prompt_event(event)
+        scope = f"the event {event}"
+        listing = f"Use {event} only."
+    else:
+        scope = f"events in {catalog}"
+        listing = (
+            f"Call `search_catalog_events` with catalog=\"{catalog}\" and "
+            f"max_results={max_events}."
+        )
+    return f"""How well did the low-latency alert classification predict the final result \
+for {scope}?
+
+1. {listing}
+2. For each event, `get_catalog_event` gives final masses (mass_1_source, mass_2_source) \
+with 90% intervals and the `gracedb_id`. Only superevent ids (starting with S, from O3 \
+onwards) can be compared; skip events whose id is missing or starts with G, and count them.
+3. For each remaining event, `get_event_metadata` on the GraceDB id gives the alert-time \
+`classification`; its largest entry is the alert class.
+4. Final class: treat a component below 3 solar masses as a neutron star (the boundary \
+the alert classifier uses): both below is BNS, one below is NSBH, neither is BBH. If a \
+90% interval straddles 3 solar masses, call the final class ambiguous.
+
+Report a table: event, GraceDB id, alert class (with probability), final masses with \
+90% intervals, final class, agree (yes / no / ambiguous). Then discuss each disagreement \
+in a sentence or two, and give the agreement rate over the events compared."""
 
 
 def main() -> None:
