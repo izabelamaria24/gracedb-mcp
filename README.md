@@ -1,5 +1,10 @@
 # GraceDB MCP Server
 
+[![PyPI](https://img.shields.io/pypi/v/gracedb-mcp)](https://pypi.org/project/gracedb-mcp/)
+[![CI](https://github.com/izabelamaria24/gracedb-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/izabelamaria24/gracedb-mcp/actions/workflows/ci.yml)
+[![License](https://img.shields.io/pypi/l/gracedb-mcp)](https://github.com/izabelamaria24/gracedb-mcp/blob/main/LICENSE)
+[![GraceDB MCP on mcprush](https://mcprush.com/badge/gracedb-mcp/score.svg)](https://mcprush.com/to/gracedb-mcp?ref=badge)
+
 <!-- mcp-name: io.github.izabelamaria24/gracedb-mcp -->
 
 An open-source [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server that
