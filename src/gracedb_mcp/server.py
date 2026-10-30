@@ -800,7 +800,10 @@ onwards) can be compared; skip events whose id is missing or starts with G, and 
 `classification`; its largest entry is the alert class.
 4. Final class: treat a component below 3 solar masses as a neutron star (the boundary \
 the alert classifier uses): both below is BNS, one below is NSBH, neither is BBH. If a \
-90% interval straddles 3 solar masses, call the final class ambiguous.
+90% interval straddles 3 solar masses, call the final class ambiguous. A component \
+between about 2.2 and 3 solar masses could be a heavy neutron star or a light black hole \
+(GW190814's 2.6 solar-mass companion is the classic case): say so instead of presenting \
+the label as certain.
 
 Report a table: event, GraceDB id, alert class (with probability), final masses with \
 90% intervals, final class, agree (yes / no / ambiguous). Then discuss each disagreement \

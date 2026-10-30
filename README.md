@@ -182,6 +182,29 @@ Or run the container directly:
 - "Was S190814bv checked by a human? What do its labels mean?"
 - "Is there public strain for GW190814 from every detector?"
 
+## Demo
+
+A real session (tool results trimmed to the key fields).
+
+> **You:** Tell me about S190814bv. Was it real, what was it, and can I get its data?
+
+| Tool call | Result |
+| --- | --- |
+| `get_event_metadata("S190814bv")` | FAR 2.0e-33 Hz; alert classification NSBH 0.998, MassGap 0.002; 63 files |
+| `get_event_labels("S190814bv")` | DQOK, SKYMAP_READY, PASTRO_READY, ADVOK (human advocate approved), PE_READY; not retracted |
+| `download_event_files("S190814bv", ["bayestar.png"])` | `gracedb://files/S190814bv/bayestar.png` (sky map, viewable as an image) |
+| `get_catalog_event("S190814bv")` | GW190814 in GWTC-2.1: 23.3 (21.9–24.7) and 2.6 (2.5–2.7) solar masses, 230 (180–270) Mpc, SNR 25.3 |
+| `check_data_availability(event="S190814bv")` | Public strain from H1, L1 and Virgo (H1 only via the event's own file) |
+| `download_strain_data("S190814bv", ["L1", "V1"], duration=32)` | `gracedb://files/S190814bv/strain/L1-1249852241-32.hdf5`, and the same for V1 |
+
+> **Agent:** Yes, it's real and extremely significant (false-alarm rate about 2×10⁻³³ Hz). It
+> passed data-quality checks, a human advocate approved it, and it was never retracted. The
+> alert called it a neutron star–black hole merger (99.8%). The final analysis (GW190814)
+> found a 23-solar-mass black hole and a 2.6-solar-mass companion, which is too heavy for
+> most neutron-star models and too light for known black holes, so its nature is still open.
+> It was 230 Mpc away. Here's the sky map, and I've saved 32 s of LIGO Livingston and Virgo
+> data around the merger.
+
 ## RL environment (experimental)
 
 `gw_rl` is a Gymnasium environment built on strain fetched by this server. Each episode shows the
