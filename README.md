@@ -33,6 +33,8 @@ pipeline (e.g. isolating astrophysical "chirps" from instrumental glitches).
 | `check_data_quality` | Per detector: which data-quality vetoes (CBC, Burst, CW, stochastic) the data passes, and any hardware injections. |
 | `list_observing_runs` | Released observing runs with dates, detectors and DOIs; which run (if any) covers a given time. |
 | `analyze_skymap` | 50%/90% credible areas, distance and peak position from a sky map; probability that given positions (galaxies, transients) or telescope fields contain the source. |
+| `search_gcn_circulars` | NASA GCN Circulars: what telescopes, satellites and neutrino detectors reported about an event (GW, GRB, IceCube...), or any Lucene query with date filters. |
+| `get_gcn_circular` | Full text of one GCN Circular, with links to cite it via ADS. |
 
 ## Resources
 
@@ -234,12 +236,12 @@ python scripts/train_agent.py --algo ppo mlp cnn --verbose
 
 ## Disclaimer
 
-Unofficial; not affiliated with or endorsed by LIGO, Virgo, KAGRA or GraceDB. Respect the
-[GWOSC](https://gwosc.org) and GraceDB data-use policies.
+Unofficial; not affiliated with or endorsed by LIGO, Virgo, KAGRA, GraceDB or NASA GCN. Respect
+the [GWOSC](https://gwosc.org), GraceDB and [GCN](https://gcn.nasa.gov) data-use policies.
 
 If you publish results using data fetched by this server, cite the data sources:
-[GWOSC](https://gwosc.org/acknowledge/) (CC BY 4.0) and, for glitch labels,
-[Gravity Spy](https://zenodo.org/records/1486046).
+[GWOSC](https://gwosc.org/acknowledge/) (CC BY 4.0), GCN Circulars by number (each has an
+ADS record), and, for glitch labels, [Gravity Spy](https://zenodo.org/records/1486046).
 
 ## Citing
 

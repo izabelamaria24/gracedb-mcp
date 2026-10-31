@@ -67,6 +67,8 @@ astrophysical probability.
    - `analyze_skymap`: 90% credible area and distance. If a sky-map image such as \
 `bayestar.png` is in `available_files`, also download it with `download_event_files` and \
 look at it through the returned resource URI.
+   - `search_gcn_circulars` with the superevent id: any follow-up reports so far \
+(none is normal in the first hour).
 4. Report a one-line verdict per event (id, most likely class, significance, retracted or \
 not), then a short paragraph each: significance in plain terms, classification, human \
 review status, and localisation (90% area in square degrees, distance, and where on the \
@@ -99,12 +101,17 @@ through the returned resource URI.
 4. `check_data_availability` with event="{event}": which detectors have public strain. \
 Then `check_data_quality` with event="{event}": mention any vetoed detector or hardware \
 injection, ignoring continuous-wave (CW) injections, which run for most of each run.
+5. Follow-up: `search_gcn_circulars` with event="{event}" (sort="relevance" if there are \
+more than 50). Summarise what other observatories reported: gamma-ray, X-ray, optical, \
+radio and neutrino searches, any counterpart candidates and whether they were ruled out. \
+Read key reports with `get_gcn_circular`; cite circulars by number with their link.
 
 Structure the dossier as: Summary; Significance and review (including which search \
 pipelines found it, from `pipelines` in the metadata); Source (keep alert-time \
 classification and final catalogue parameters clearly separate, quoting 90% intervals); \
-Sky localisation; Public data; Links (GWOSC event page). End with: "Data: Gravitational \
-Wave Open Science Center (gwosc.org), CC BY 4.0."
+Sky localisation; Follow-up observations; Public data; Links (GWOSC event page). End \
+with: "Data: Gravitational Wave Open Science Center (gwosc.org), CC BY 4.0; follow-up \
+reports: NASA GCN Circulars."
 
 {_AUDIENCES[audience]}"""
 

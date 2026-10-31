@@ -94,6 +94,12 @@ plus a `tools/<source>.py`, which the current layout already supports.
 | B | More GraceDB and GWOSC data | `list_observing_runs`, `check_data_quality` (all GWOSC veto categories and hardware injections), each pipeline's best candidate in `get_event_metadata`, pipeline and detectors in search results; GPS/UTC without gwpy | Done |
 | B2 | Per-pipeline candidate events (G-ids) and GraceDB's `gwtc` endpoint | Both need an LVK login (HTTP 401 anonymously); only worth it for authenticated users | Blocked for public use |
 | C | Sky-map analysis | `analyze_skymap`: 50%/90% credible areas, distance, most probable position, probability at positions and inside telescope fields. Pure Python (works in the slim image); matches `ligo.skymap` exactly on real maps (`scripts/validate_skymap.py`) | Done |
-| D | GCN (NASA's General Coordinates Network) | Telescope follow-up reports (GCN Circulars) per event; neutrino (IceCube) and gamma-ray (Fermi, Swift) alerts, making this a multi-messenger server | Large |
+| D | GCN (NASA's General Coordinates Network) | `search_gcn_circulars` (by event: S-id, GW name mapped to its GraceDB id, GRB, IceCube; or Lucene query, dates, relevance sort, pages) and `get_gcn_circular`. Stdlib HTTP, cached. Dossier and briefing prompts use them | Done |
+| D2 | GCN Notices (machine-readable alerts over Kafka) | Real-time IceCube, Fermi, Swift, LVK notices; needs GCN client credentials and a long-running consumer | Not started |
 
-Recommended order: D for breadth.
+Caveat: GCN has no documented JSON search API. Search uses the data route behind the archive's
+search page (`?_data=routes/circulars._archive._index`); single circulars use the documented
+`/circulars/<id>.json`. If GCN changes its site, search fails with a clear error and needs an
+update; the bulk archive (`/circulars/archive.json.tar.gz`, ~32 MB) is the documented fallback.
+
+Steps A-D are done. Remaining: workflow 4 (analysis skill), workflow 5 (alert audit prompt), D2.
