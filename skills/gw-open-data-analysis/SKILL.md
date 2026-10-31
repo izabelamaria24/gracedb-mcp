@@ -1,21 +1,25 @@
 ---
 name: gw-open-data-analysis
-description: Look at a gravitational-wave event in public LIGO/Virgo/KAGRA data. Finds the event, checks which detectors have open data, downloads the strain from GWOSC, whitens it and plots the chirp in a Q-transform (time-frequency map), then explains what is and is not visible. Use when asked to "show the chirp", "plot GW150914", "analyse the strain of an event", "make a Q-transform/spectrogram", or "start a notebook on LIGO open data". Needs the gracedb-mcp server and local Python with gwpy.
+description: Look at a gravitational-wave event in public LIGO/Virgo/KAGRA data. Finds the event, checks which detectors have open data, downloads the strain from GWOSC, whitens it and plots the chirp in a Q-transform (time-frequency map), then matched-filters it with a waveform for the catalogue masses to measure the signal-to-noise ratio, and explains what is and is not seen. Use when asked to "show the chirp", "plot GW150914", "analyse the strain of an event", "make a Q-transform/spectrogram", "matched filter", "measure the SNR", or "start a notebook on LIGO open data". Needs the gracedb-mcp server and local Python with gwpy (plus lalsuite for the matched filter).
 ---
 
 # Open-data analysis starter
 
 Takes one event from name to plots: event, then data availability, strain, whitening,
-Q-transform. A short report follows. Uses the `gracedb-mcp` tools for lookup and
-download, and runs [`scripts/qscan.py`](scripts/qscan.py) (next to this file) for the
-signal processing.
+Q-transform, and matched filter. A short report follows. Uses the `gracedb-mcp` tools
+for lookup and download. The signal processing is done by two scripts next to this
+file, [`scripts/qscan.py`](scripts/qscan.py) and
+[`scripts/matched_filter.py`](scripts/matched_filter.py).
 
 ## Requirements
 
 - The `gracedb-mcp` MCP server.
-- Python with gwpy, which brings numpy and matplotlib. Check with
+- Python with gwpy, which brings numpy, scipy and matplotlib. Check with
   `python -c "import gwpy"`. If it is missing, either ask before running
   `pip install gwpy`, or use `uv run --with gwpy python scripts/qscan.py ...`.
+- For the matched filter, lalsuite as well (it provides the waveform model). Check with
+  `python -c "import lalsimulation"`; otherwise use `pip install lalsuite`, or
+  `uv run --with gwpy --with lalsuite ...`.
 
 ## Steps
 
@@ -26,6 +30,8 @@ Call `get_catalog_event` with the name the user gave. It accepts catalogue names
 
 - GPS time;
 - chirp mass;
+- component masses (`mass_1_source`, `mass_2_source`) and redshift, for the matched
+  filter;
 - network SNR (`network_matched_filter_snr`);
 - GraceDB id.
 
@@ -91,9 +97,35 @@ frequency, and normalised energy. A detector with bad data gets an `error`, and 
 others still run.
 
 If the user asked for a notebook, write one whose cells follow the same steps: load,
-Q-transform, plot, whiten, ASD. Use `qscan.py` as the reference, then run it.
+Q-transform, plot, whiten, ASD, then the matched filter. Use the two scripts as the
+reference, then run it.
 
-### 5. Look, then report
+### 5. Matched filter
+
+This is how LIGO actually detects signals. The script takes a predicted waveform for
+the catalogue masses (the template) and slides it along the data. At each moment it
+measures how well the template fits, as a signal-to-noise ratio (SNR). The template
+has no spins. Catalogue masses are rounded, so the script tries 21 slightly scaled
+templates and keeps the best fit.
+
+```bash
+python scripts/matched_filter.py --gps <GPS> --label <NAME> --out <NAME>_mf \
+    --masses <mass_1_source> <mass_2_source> --redshift <redshift> <files or --fetch H1 L1 ...>
+```
+
+The script needs at least four times the signal's duration in data. The 30 s files are
+enough for black-hole mergers. Neutron-star systems last minutes in band, so pass
+`--fetch <IFOs> --duration 512`, which takes about a minute to download.
+
+The script writes `snr.png`: the SNR over time, plus a zoom of ±0.15 s around the
+event. It also prints JSON with:
+
+- for each detector: `snr` near the event, `time_offset_s`, and `background_max_snr`
+  (the loudest SNR elsewhere in the data, which is what noise reaches);
+- `combined_snr`: the detector SNRs added in quadrature, to compare with the
+  catalogue's network SNR.
+
+### 6. Look, then report
 
 Look at every Q-transform image before describing it. Do not rely on the numbers
 alone. A chirp is a track that rises in frequency and ends within about 0.1 s of
@@ -102,9 +134,11 @@ Report:
 
 1. The event, GPS time, detectors used, and the window.
 2. For each detector: whether a chirp is visible, plus its loudest tile.
-3. Anything odd: glitches, gaps, or a detector that shows nothing.
-4. The plot paths, embedded as images where the client allows.
-5. Credit: "Data from the Gravitational Wave Open Science Center (gwosc.org)". Add
+3. The matched filter: SNR in each detector against its background, the combined SNR
+   against the catalogue's, and the arrival-time differences between detectors.
+4. Anything odd: glitches, gaps, or a detector that shows nothing.
+5. The plot paths, embedded as images where the client allows.
+6. Credit: "Data from the Gravitational Wave Open Science Center (gwosc.org)". Add
    the run's DOI from `list_observing_runs`.
 
 ## How to read the results
@@ -126,6 +160,31 @@ Report:
   neutron-star chirp rising over the last 2 s. If the peak is huge, broadband and
   short, call it a glitch, not the event. The published analyses removed this glitch.
 - **Most catalogue events are too quiet to see by eye.** If nothing shows, say so,
-  and suggest a louder event for a demonstration.
+  and suggest a louder event for a demonstration. The matched filter still finds
+  them: it adds up the signal over every cycle, which the eye cannot.
+- **Matched-filter SNR: compare with the background, not with zero.** In noise, the
+  loudest SNR across a few seconds is typically 4 to 5. A detector at 5 or below is
+  not a detection on its own. Checked against published values:
+
+  | Event | This script | Published |
+  | --- | --- | --- |
+  | GW150914 | H1 19.5, L1 13.6 | H1 about 20, L1 about 13 |
+  | GW190814 | H1 10.4, L1 21.3, V1 4.7 | network SNR 25.3 |
+  | GW190521 | combined 14.2 | 14.3 |
+  | GW170817 (L1 gated) | H1 17.9, L1 24.2 | H1 18.8, L1 26.4 |
+
+  Values a few percent under the catalogue are expected: the template has no spins
+  and the masses are rounded.
+- **Arrival times are physical.** At GW150914, L1's peak comes about 7 ms before
+  H1's; that delay helps locate the source on the sky. Detectors more than 30 ms
+  apart cannot be the same signal.
+- **Glitches fool the matched filter too.** If a detector's `background_max_snr` is
+  far above 5, look at its Q-transform for a glitch. For GW170817, L1's glitch at
+  -1.02 s raises the background to about 15 for the whole template length (about
+  2 minutes). Rerun with `--gate L1:-1.02`, which zeroes 0.5 s around the glitch, as
+  LVK did. The background then drops to 5. Give the glitch's offset from the
+  Q-transform, and say in the report that the data was gated. Real searches also
+  run consistency tests (chi-squared) that this script lacks, so a peak alone is not
+  proof of a signal.
 - **Do not estimate masses or distances from these plots.** Quote the catalogue values
   from step 1 instead, labelled as the published results.

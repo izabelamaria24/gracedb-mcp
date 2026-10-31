@@ -437,7 +437,10 @@ def test_prompts_only_name_existing_tools(name, arguments):
 
 SKILLS_DIR = os.path.join(os.path.dirname(__file__), "..", "skills")
 # Tool arguments and result fields the skills mention.
-SKILL_FIELDS = {"gps_time", "network_matched_filter_snr"}
+SKILL_FIELDS = {
+    "gps_time", "network_matched_filter_snr", "mass_1_source", "mass_2_source",
+    "time_offset_s", "background_max_snr", "combined_snr",
+}
 
 
 @pytest.mark.parametrize("skill", sorted(os.listdir(SKILLS_DIR)))

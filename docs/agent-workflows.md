@@ -75,6 +75,18 @@ the data and shows the chirp in a Q-transform. Needs code execution, hence a ski
   reads the server's strain files, or fetches from GWOSC itself when the server runs in
   Docker. It writes Q-transform, whitened-strain and ASD plots and prints JSON with the
   loudest tile per detector.
+- `scripts/matched_filter.py` measures the SNR, the way LIGO detects signals:
+  - the noise spectrum is a Welch estimate (scipy);
+  - the data is Fourier-transformed with `np.fft.rfft`, weighted by the template
+    (IMRPhenomD from lalsuite, no spins) and by 1/noise, then transformed back with
+    `np.fft.ifft`;
+  - a bank of 21 mass scalings covers the rounded catalogue masses;
+  - SNRs are read within 30 ms across detectors and compared with each detector's own
+    background;
+  - `--gate` removes glitches.
+
+  It reproduces published SNRs to within a few percent: GW150914 H1 19.5 / L1 13.6;
+  GW170817 H1 17.9 / L1 24.2 with the L1 glitch gated.
 - Steps: `get_catalog_event`, then `check_data_availability`, `download_strain_data` and the
   script. The window depends on chirp mass; the agent looks at the images before reporting.
 - Checked against GW150914, GW170814, GW190521_074359, GW190521, GW190814 and GW170817.

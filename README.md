@@ -78,7 +78,7 @@ cp -r skills/gw-open-data-analysis ~/.claude/skills/
 
 | Skill | What it does |
 | --- | --- |
-| [`gw-open-data-analysis`](skills/gw-open-data-analysis/SKILL.md) | From an event name to plots: checks which detectors have open data, downloads the strain and whitens it. It then plots each detector's Q-transform (the chirp), the whitened strain and the noise spectrum, and reports what is and is not visible. Needs local Python with `gwpy`. |
+| [`gw-open-data-analysis`](skills/gw-open-data-analysis/SKILL.md) | From an event name to plots: checks which detectors have open data, downloads the strain and whitens it. It then plots each detector's Q-transform (the chirp), the whitened strain and the noise spectrum. It also matched-filters the data with a waveform for the catalogue masses, which reproduces the published SNRs to within a few percent. It reports what is and is not seen. Needs local Python with `gwpy`, plus `lalsuite` for the matched filter. |
 
 ### ⚠️ Important: where strain data actually comes from
 
