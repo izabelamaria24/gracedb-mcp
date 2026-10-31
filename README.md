@@ -29,6 +29,7 @@ pipeline (e.g. isolating astrophysical "chirps" from instrumental glitches).
 | `search_catalog_events` | Search published GWOSC catalogue events (GWTC-1 to GWTC-5) by masses, distance, SNR, p_astro. |
 | `get_catalog_event` | Source parameters with 90% intervals for one event, by GW name or GraceDB id. |
 | `get_event_labels` | GraceDB labels (data quality, review, retraction, products ready) explained in plain English. |
+| `audit_alerts` | The alerts of a period in one call: superevents, significant and low-significance alerts, retractions with hours to retraction, alerts by detector network and pipeline. |
 | `check_data_availability` | Which detectors have public GWOSC strain for an event or GPS span, before you download. |
 | `check_data_quality` | Per detector: which data-quality vetoes (CBC, Burst, CW, stochastic) the data passes, and any hardware injections. |
 | `list_observing_runs` | Released observing runs with dates, detectors and DOIs; which run (if any) covers a given time. |
@@ -60,6 +61,7 @@ Ready-made workflows that chain the tools. Most clients show them as slash comma
 | `alert_briefing` | `hours` (24), `max_far` (3.8e-7 Hz, about one false alarm per month), `category` (`Production`, or `MDC` for the simulated alerts GraceDB creates about hourly) | New alerts triaged: retractions and data-quality flags first, then class, significance and sky map. |
 | `event_dossier` | `event` (`S190814bv` or `GW190814`), `audience` (`scientist`, `student`, `public`) | One event end to end: significance, review history, alert vs. final parameters, sky map, public data. |
 | `alert_vs_catalog` | `event`, or `catalog` + `max_events` (15) | How well the low-latency classification matched the final published masses. |
+| `alert_audit` | `start`, `end` (now), `category` | A period's alerts: how many, how many retracted, why (from the LVK retraction circulars) and how fast, plus the detectors and pipelines involved. |
 
 ## Skills
 

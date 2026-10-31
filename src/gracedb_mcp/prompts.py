@@ -8,7 +8,7 @@ from mcp.shared.exceptions import MCPError
 from mcp.types import INVALID_PARAMS
 
 from . import app
-from .tools.alerts import GRACEDB_TIME
+from .tools.alerts import GRACEDB_TIME, _gracedb_time
 
 _AUDIENCES = {
     "scientist": "Write for a gravitational-wave scientist: precise, with units and uncertainties.",
@@ -152,3 +152,50 @@ the label as certain.
 Report a table: event, GraceDB id, alert class (with probability), final masses with \
 90% intervals, final class, agree (yes / no / ambiguous). Then discuss each disagreement \
 in a sentence or two, and give the agreement rate over the events compared."""
+
+
+@app.mcp.prompt(title="Gravitational-wave alert audit")
+def alert_audit(start: str, end: str | None = None, category: str = "Production") -> str:
+    """Audit a period's alerts: counts, retractions and why, time to retract, detectors.
+
+    ``start`` and ``end`` are UTC dates or times (``end`` defaults to now), e.g. the O3
+    run 2019-04-01 to 2020-03-27 or O4a 2023-05-24 to 2024-01-16.
+    """
+    if category not in _CATEGORIES:
+        raise _argument_error(f"category must be one of {sorted(_CATEGORIES)}")
+    try:
+        start = _gracedb_time(start)
+        end = _gracedb_time(end) if end else datetime.now(timezone.utc).strftime(GRACEDB_TIME)
+    except ValueError:
+        raise _argument_error("start and end must be ISO-8601 dates or times, e.g. 2023-05-24") from None
+    if category == "Production":
+        reasons = """2. GraceDB does not record why an alert was retracted. For each retracted \
+superevent (all of them if there are at most 15; otherwise significant alerts first, and \
+say how many you skipped), call `search_gcn_circulars` with its id, find the circular \
+whose subject mentions retraction and read it with `get_gcn_circular`. Summarise the \
+stated reason in a few words. Use the audit's `hints` labels (DQV, detector NO labels, \
+EARLY_WARNING) as supporting evidence. If there is no retraction circular, write "no \
+reason published"."""
+    else:
+        reasons = f"""2. {_CATEGORIES[category]} They have no GCN Circulars, so skip the \
+retraction reasons."""
+    return f"""Audit the gravitational-wave alerts created between {start} and {end} UTC.
+
+1. Call `audit_alerts` with start="{start}", end="{end}" and category="{category}".
+{reasons}
+3. Report:
+   - Headline numbers: superevents, significant public alerts, low-significance alerts, \
+retractions (how many were significant alerts, and the retraction rate), and time to \
+retraction (median and range, in minutes or hours as fits). Point out outliers, such as \
+an alert retracted days later.
+   - A retraction table: id, date, pipeline and search, detectors, false-alarm rate, \
+alert type, time to retraction, reason, circular number.
+   - Group the reasons into a few kinds and count them.
+   - Significant alerts by detector network and by pipeline, with a sentence on what \
+stands out (single-detector alerts, or one pipeline behind several retractions).
+
+Counts come from GraceDB labels: GCN_PRELIM_SENT (significant alert), \
+LOW_SIGNIF_PRELIM_SENT (low-significance alert, O4 onwards only) and ADVNO (retracted). \
+The pipeline is the one that produced the preferred event, not every pipeline that found \
+the signal. If the period has no superevents, the detectors were probably between \
+observing runs; say so instead of reporting zeros as a finding."""

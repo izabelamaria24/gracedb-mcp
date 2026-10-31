@@ -130,6 +130,54 @@ def test_search_superevents_min_confidence_filters(fake_client):
     assert result["superevents"][0]["astro_probability"] == 0.96
 
 
+def _audit_record(sid, labels, instruments, pipeline, search="AllSky"):
+    return {
+        "superevent_id": sid,
+        "created": "2023-08-08 04:00:00 UTC",
+        "far": 1e-9,
+        "labels": labels,
+        "preferred_event_data": {"instruments": instruments, "pipeline": pipeline, "search": search},
+    }
+
+
+def test_audit_alerts_counts_retractions_and_hides_reviewers(fake_client, monkeypatch):
+    import json
+
+    kept = _audit_record("S1", ["GCN_PRELIM_SENT", "ADVOK"], "H1,L1", "gstlal")
+    pulled = _audit_record("S2", ["GCN_PRELIM_SENT", "ADVNO", "DQV"], "H1", "pycbc")
+    early = _audit_record("S3", ["ADVNO", "EARLY_WARNING"], "H1,L1", "spiir", "EarlyWarning")
+    queries = []
+
+    def search(query, *, max_results=20, columns=None):
+        queries.append(query)
+        return [kept, pulled] if query.endswith("GCN_PRELIM_SENT") else [pulled, early]
+
+    retracted_at = {"S2": "2023-08-08 06:00:00 UTC", "S3": "2023-08-08 04:30:00 UTC"}
+    monkeypatch.setattr(fake_client, "search_superevents", search, raising=False)
+    monkeypatch.setattr(
+        fake_client, "count_superevents",
+        lambda query: 40 if "LOW_SIGNIF" in query else 50, raising=False,
+    )
+    monkeypatch.setattr(
+        fake_client, "get_labels",
+        lambda sid: [{"name": "ADVNO", "created": retracted_at[sid], "creator": "someone@ligo.org"}],
+        raising=False,
+    )
+
+    result = alerts.audit_alerts("2023-08-01", "2023-09-01")
+    assert all("created: 2023-08-01 .. 2023-09-01 category: Production" in q for q in queries)
+    assert (result["superevents"], result["significant_alerts"], result["low_significance_alerts"]) == (50, 2, 40)
+    assert (result["retracted"], result["retracted_significant"]) == (2, 1)
+    assert result["retraction_rate_significant"] == 0.5
+    assert result["hours_to_retraction"] == {"median": 1.25, "min": 0.5, "max": 2.0}
+    assert result["significant_by_detectors"] == {"H1,L1": 1, "H1": 1}
+    assert result["significant_with_labels"] == {"ADVOK": 1}
+    by_id = {r["superevent_id"]: r for r in result["retractions"]}
+    assert by_id["S2"]["public_alert"] == "significant" and by_id["S2"]["hints"] == ["DQV"]
+    assert by_id["S3"]["public_alert"] == "early_warning"
+    assert "@" not in json.dumps(result)
+
+
 def test_get_event_metadata(fake_client):
     meta = alerts.get_event_metadata("S230518h")
     assert meta["superevent_id"] == "S230518h"
@@ -364,6 +412,8 @@ PROMPT_CASES = [
     ("event_dossier", {"event": "S190814bv", "audience": "public"}),
     ("alert_vs_catalog", {"event": "S190814bv"}),
     ("alert_vs_catalog", {"catalog": "GWTC-3-confident", "max_events": "5"}),
+    ("alert_audit", {"start": "2019-04-01", "end": "2020-03-27"}),
+    ("alert_audit", {"start": "2026-10-01", "category": "MDC"}),
 ]
 
 
@@ -371,7 +421,7 @@ def test_prompts_are_listed():
     import anyio
 
     names = {p.name for p in anyio.run(server.mcp.list_prompts)}
-    assert names == {"alert_briefing", "event_dossier", "alert_vs_catalog"}
+    assert names == {"alert_briefing", "event_dossier", "alert_vs_catalog", "alert_audit"}
 
 
 @pytest.mark.parametrize(("name", "arguments"), PROMPT_CASES)
@@ -428,6 +478,14 @@ def test_alert_briefing_category():
     assert 'category="MDC"' in simulated and "none of them is a real detection" in simulated
 
 
+def test_alert_audit_window_and_reasons():
+    text = _prompt_text("alert_audit", {"start": "2023-05-24T00:00:00Z", "end": "2024-01-16"})
+    assert 'start="2023-05-24 00:00:00", end="2024-01-16"' in text
+    assert "`get_gcn_circular`" in text
+    simulated = _prompt_text("alert_audit", {"start": "2026-10-01", "category": "MDC"})
+    assert "skip the retraction reasons" in simulated and "`search_gcn_circulars`" not in simulated
+
+
 @pytest.mark.parametrize(
     ("name", "arguments", "message"),
     [
@@ -440,6 +498,8 @@ def test_alert_briefing_category():
             {"event": "S190814bv", "catalog": "GWTC-3-confident"},
             "exactly one of event or catalog",
         ),
+        ("alert_audit", {"start": "last week"}, "ISO-8601"),
+        ("alert_audit", {"start": "2023-05-24", "category": "Real"}, "category must be"),
     ],
 )
 def test_prompts_reject_bad_arguments_clearly(name, arguments, message):

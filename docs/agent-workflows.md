@@ -18,7 +18,7 @@ knowing which tools to chain.
 | 2 | Event dossier | Prompt | Done |
 | 3 | Alert vs. final result | Prompt | Done |
 | 4 | Open-data analysis starter | Skill | Done |
-| 5 | Alert audit | Prompt | Planned |
+| 5 | Alert audit | Prompt | Done |
 
 ### 1. Alert briefing (`alert_briefing`)
 
@@ -89,6 +89,21 @@ the data and shows the chirp in a Q-transform. Needs code execution, hence a ski
 For a period: how many alerts, how many retracted and why (labels), time to retraction,
 which detectors were involved.
 
+- Arguments: `start`, `end` (default now), `category`.
+- Tool `audit_alerts` does the counting in one call, since a run has thousands of superevents
+  (O4: 5,461):
+  - totals come from GraceDB's `numRows` on one-row pages;
+  - significant alerts (`GCN_PRELIM_SENT`) and retractions (`ADVNO`) are fetched as records;
+  - hours to retraction come from the ADVNO label time;
+  - the reviewer's email on labels is never returned.
+- Reasons: GraceDB does not record them. The prompt reads the LVK retraction circular for
+  each retraction (`search_gcn_circulars`, `get_gcn_circular`).
+- Checked live:
+  - O3: 80 superevents, 77 significant alerts, 24 retracted;
+  - O4a: 1,697 superevents, 88 significant alerts, 1,605 low-significance alerts, 11 retracted.
+
+  Each takes about 5 s.
+
 ## Testing
 
 - Each prompt renders through a real MCP client (`prompts/list`, `prompts/get`).
@@ -115,4 +130,4 @@ search page (`?_data=routes/circulars._archive._index`); single circulars use th
 `/circulars/<id>.json`. If GCN changes its site, search fails with a clear error and needs an
 update; the bulk archive (`/circulars/archive.json.tar.gz`, ~32 MB) is the documented fallback.
 
-Steps A-D and workflow 4 are done. Remaining: workflow 5 (alert audit prompt), D2.
+Steps A-D and workflows 1-5 are done. Remaining: D2.

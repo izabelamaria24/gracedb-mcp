@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import statistics
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
@@ -215,6 +217,7 @@ LABEL_MEANINGS = {
     "EMBRIGHT_READY": "Neutron-star and remnant probabilities (HasNS, HasRemnant) available.",
     "PE_READY": "Full parameter estimation finished.",
     "GCN_PRELIM_SENT": "Preliminary GCN notice sent.",
+    "LOW_SIGNIF_PRELIM_SENT": "Preliminary GCN notice sent for a low-significance alert (O4 onwards).",
     "RAVEN_ALERT": "Coincidence with an external trigger (e.g. gamma-ray burst) found.",
     "EM_COINC": "Possible coincidence with an external (gamma-ray or neutrino) event.",
     "COMBINEDSKYMAP_READY": "Sky map combining GW and external-trigger data available.",
@@ -250,4 +253,111 @@ def get_event_labels(graceid: str) -> dict[str, Any]:
             }
             for label in labels
         ],
+    }
+
+
+_AUDIT_LIMIT = 2000  # O4 as a whole had 270 significant alerts
+# Labels that can hint at why an event was retracted; the stated reason is in the GCN circular.
+_RETRACTION_HINTS = ("DQV", "INJ", "EARLY_WARNING", "H1NO", "L1NO", "V1NO", "K1NO")
+_NOTABLE_LABELS = ("ADVOK", "EARLY_WARNING", "EM_COINC", "RAVEN_ALERT", "HIGH_PROFILE")
+
+
+def _hours_between(start: str | None, end: str | None) -> float | None:
+    if not start or not end:
+        return None
+    a, b = (datetime.fromisoformat(v.replace(" UTC", "+00:00").replace("Z", "+00:00")) for v in (start, end))
+    return round((b - a).total_seconds() / 3600, 2)
+
+
+def _tally(values: list[str | None]) -> dict[str, int]:
+    return dict(Counter(v or "unknown" for v in values).most_common())
+
+
+@app.mcp.tool()
+def audit_alerts(start: str, end: str, category: str = "Production") -> dict[str, Any]:
+    """Audit the public alerts of a period: how many, how many retracted, how fast, and by whom.
+
+    Counts all superevents created in the period, the significant public alerts
+    (label GCN_PRELIM_SENT) and the alerts sent only as low-significance
+    (LOW_SIGNIF_PRELIM_SENT, O4 onwards). Breaks the significant alerts down by
+    detector network, pipeline and search, and lists every retracted superevent
+    (ADVNO) with the hours from creation to retraction. GraceDB does not record why
+    an alert was retracted: read the LVK retraction circular (``search_gcn_circulars``).
+
+    Args:
+        start: Start of the period (ISO-8601 date or time, UTC); matched against
+            superevent creation time.
+        end: End of the period, inclusive.
+        category: ``Production`` (real alerts), ``MDC`` (simulated) or ``Test``.
+    """
+    window = _build_query(start, end, None, category)
+    jobs = {
+        "total": lambda: app.client.count_superevents(window),
+        "low": lambda: app.client.count_superevents(
+            f"{window} LOW_SIGNIF_PRELIM_SENT & ~GCN_PRELIM_SENT"
+        ),
+        "significant": lambda: app.client.search_superevents(
+            f"{window} GCN_PRELIM_SENT", max_results=_AUDIT_LIMIT
+        ),
+        "retracted": lambda: app.client.search_superevents(
+            f"{window} ADVNO", max_results=_AUDIT_LIMIT
+        ),
+    }
+    done, failed = app.map_concurrently(lambda name: jobs[name](), jobs)
+    if failed:
+        raise next(iter(failed.values()))
+    significant, retracted = done["significant"], done["retracted"]
+
+    label_times, _ = app.map_concurrently(
+        lambda sid: {lb["name"]: lb.get("created") for lb in app.client.get_labels(sid)},
+        [r["superevent_id"] for r in retracted],
+    )
+    retractions = []
+    for record in retracted:
+        sid, names = record["superevent_id"], set(record.get("labels") or [])
+        if "GCN_PRELIM_SENT" in names:
+            alert = "significant"
+        elif "EARLY_WARNING" in names:
+            alert = "early_warning"
+        elif "LOW_SIGNIF_PRELIM_SENT" in names:
+            alert = "low_significance"
+        else:
+            alert = "no_notice_label"
+        retractions.append({
+            "superevent_id": sid,
+            "created": record.get("created"),
+            "far": record.get("far"),
+            **_preferred_event(record),
+            "public_alert": alert,
+            "hours_to_retraction": _hours_between(
+                record.get("created"), label_times.get(sid, {}).get("ADVNO")
+            ),
+            "hints": [name for name in _RETRACTION_HINTS if name in names],
+        })
+
+    preferred = [_preferred_event(r) for r in significant]
+    hours = [r["hours_to_retraction"] for r in retractions if r["hours_to_retraction"] is not None]
+    retracted_significant = sum(r["public_alert"] == "significant" for r in retractions)
+    notable = Counter(n for r in significant for n in r.get("labels") or [] if n in _NOTABLE_LABELS)
+    return {
+        "query": window,
+        "superevents": done["total"],
+        "significant_alerts": len(significant),
+        "low_significance_alerts": done["low"],
+        "retracted": len(retractions),
+        "retracted_significant": retracted_significant,
+        "retraction_rate_significant": (
+            round(retracted_significant / len(significant), 3) if significant else None
+        ),
+        "hours_to_retraction": {
+            "median": round(statistics.median(hours), 2), "min": min(hours), "max": max(hours),
+        } if hours else None,
+        "significant_by_detectors": _tally(
+            [",".join(p["detectors"]) if p["detectors"] else None for p in preferred]
+        ),
+        "significant_by_pipeline": _tally([p["pipeline"] for p in preferred]),
+        "significant_by_search": _tally([p["search"] for p in preferred]),
+        "significant_with_labels": {name: notable[name] for name in _NOTABLE_LABELS if notable[name]},
+        "retractions": retractions,
+        "truncated": max(len(significant), len(retracted)) >= _AUDIT_LIMIT,
     }

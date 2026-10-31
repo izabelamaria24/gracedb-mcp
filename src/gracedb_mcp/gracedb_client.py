@@ -12,6 +12,7 @@ import os
 import shutil
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlencode
 
 from ligo.gracedb.rest import GraceDb
 
@@ -81,6 +82,11 @@ class GraceDbClient:
             if len(results) >= max_results:
                 break
         return results
+
+    def count_superevents(self, query: str) -> int:
+        """Number of superevents matching a query, read from a single one-row page."""
+        uri = f"{self.client.links['superevents']}?{urlencode({'query': query, 'count': 1})}"
+        return int(self.client.get(uri).json()["numRows"])
 
     def get_superevent(self, superevent_id: str) -> dict[str, Any]:
         return self.client.superevent(superevent_id).json()
