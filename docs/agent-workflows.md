@@ -17,7 +17,7 @@ knowing which tools to chain.
 | 1 | Alert briefing | Prompt | Done |
 | 2 | Event dossier | Prompt | Done |
 | 3 | Alert vs. final result | Prompt | Done |
-| 4 | Open-data analysis starter | Skill | Planned |
+| 4 | Open-data analysis starter | Skill | Done |
 | 5 | Alert audit | Prompt | Planned |
 
 ### 1. Alert briefing (`alert_briefing`)
@@ -71,6 +71,19 @@ Combines GraceDB and the GWOSC catalogues, which few tools do.
 Find events, check data, download strain, then write and run a notebook that whitens
 the data and shows the chirp in a Q-transform. Needs code execution, hence a skill.
 
+- Lives in `skills/gw-open-data-analysis/`: `SKILL.md` plus `scripts/qscan.py`. The script
+  reads the server's strain files, or fetches from GWOSC itself when the server runs in
+  Docker. It writes Q-transform, whitened-strain and ASD plots and prints JSON with the
+  loudest tile per detector.
+- Steps: `get_catalog_event`, then `check_data_availability`, `download_strain_data` and the
+  script. The window depends on chirp mass; the agent looks at the images before reporting.
+- Checked against GW150914, GW170814, GW190521_074359, GW190521, GW190814 and GW170817.
+- Guardrails:
+  - visibility follows each detector's SNR (GW190814: clear in L1, faint in H1, none in V1);
+  - normalised energy is not a detection statistic;
+  - glitches (GW170817's L1) can swamp the signal;
+  - never estimate parameters from the plots.
+
 ### 5. Alert audit (`alert_audit`)
 
 For a period: how many alerts, how many retracted and why (labels), time to retraction,
@@ -102,4 +115,4 @@ search page (`?_data=routes/circulars._archive._index`); single circulars use th
 `/circulars/<id>.json`. If GCN changes its site, search fails with a clear error and needs an
 update; the bulk archive (`/circulars/archive.json.tar.gz`, ~32 MB) is the documented fallback.
 
-Steps A-D are done. Remaining: workflow 4 (analysis skill), workflow 5 (alert audit prompt), D2.
+Steps A-D and workflow 4 are done. Remaining: workflow 5 (alert audit prompt), D2.

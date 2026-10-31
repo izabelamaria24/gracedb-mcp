@@ -385,6 +385,27 @@ def test_prompts_only_name_existing_tools(name, arguments):
     assert named <= tools, f"unknown tools: {named - tools}"
 
 
+SKILLS_DIR = os.path.join(os.path.dirname(__file__), "..", "skills")
+# Tool arguments and result fields the skills mention.
+SKILL_FIELDS = {"gps_time", "network_matched_filter_snr"}
+
+
+@pytest.mark.parametrize("skill", sorted(os.listdir(SKILLS_DIR)))
+def test_skills_have_frontmatter_and_name_existing_tools(skill):
+    import anyio
+
+    with open(os.path.join(SKILLS_DIR, skill, "SKILL.md"), encoding="utf-8") as f:
+        text = f.read()
+    front = re.match(r"---\n(.*?)\n---\n", text, re.DOTALL)
+    assert front and f"name: {skill}\n" in front.group(1) + "\n"
+    assert re.search(r"^description: .{50,}", front.group(1), re.MULTILINE)
+
+    tools = {t.name for t in anyio.run(server.mcp.list_tools)}
+    named = {word for word in re.findall(r"`([a-z_]+)`", text) if "_" in word} - SKILL_FIELDS
+    assert named, "skill should name the tools to call"
+    assert named <= tools, f"unknown tools: {named - tools}"
+
+
 def test_alert_briefing_uses_a_closed_window_gracedb_accepts():
     text = _prompt_text("alert_briefing", {"hours": "6"})
     window = re.search(r'start="([^"]+)", end="([^"]+)"', text)

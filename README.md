@@ -61,6 +61,23 @@ Ready-made workflows that chain the tools. Most clients show them as slash comma
 | `event_dossier` | `event` (`S190814bv` or `GW190814`), `audience` (`scientist`, `student`, `public`) | One event end to end: significance, review history, alert vs. final parameters, sky map, public data. |
 | `alert_vs_catalog` | `event`, or `catalog` + `max_events` (15) | How well the low-latency classification matched the final published masses. |
 
+## Skills
+
+Agent skills cover workflows that need more than this server, such as running Python locally.
+They live in [`skills/`](skills/) and are not part of the PyPI package. To use one, copy its
+folder to your agent's skills directory:
+
+- Claude Code: `~/.claude/skills/`
+- GitHub Copilot: `.github/skills/` in a project, or `~/.copilot/skills/`
+
+```bash
+cp -r skills/gw-open-data-analysis ~/.claude/skills/
+```
+
+| Skill | What it does |
+| --- | --- |
+| [`gw-open-data-analysis`](skills/gw-open-data-analysis/SKILL.md) | From an event name to plots: checks which detectors have open data, downloads the strain and whitens it. It then plots each detector's Q-transform (the chirp), the whitened strain and the noise spectrum, and reports what is and is not visible. Needs local Python with `gwpy`. |
+
 ### ⚠️ Important: where strain data actually comes from
 
 GraceDB does **not** host raw strain data. It stores *event artifacts* (skymaps, classifications,
