@@ -52,7 +52,7 @@ Ready-made workflows that chain the tools. Most clients show them as slash comma
 
 | Prompt | Arguments | What you get |
 | --- | --- | --- |
-| `alert_briefing` | `hours` (24), `max_far` (3.8e-7 Hz, about one false alarm per month) | New alerts triaged: retractions and data-quality flags first, then class, significance and sky map. |
+| `alert_briefing` | `hours` (24), `max_far` (3.8e-7 Hz, about one false alarm per month), `category` (`Production`, or `MDC` for the simulated alerts GraceDB creates about hourly) | New alerts triaged: retractions and data-quality flags first, then class, significance and sky map. |
 | `event_dossier` | `event` (`S190814bv` or `GW190814`), `audience` (`scientist`, `student`, `public`) | One event end to end: significance, review history, alert vs. final parameters, sky map, public data. |
 | `alert_vs_catalog` | `event`, or `catalog` + `max_events` (15) | How well the low-latency classification matched the final published masses. |
 

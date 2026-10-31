@@ -359,6 +359,7 @@ PROMPT_FIELDS = {"available_files", "gracedb_id", "p_astro"}
 PROMPT_CASES = [
     ("alert_briefing", {}),
     ("alert_briefing", {"hours": "6", "max_far": "1e-8"}),
+    ("alert_briefing", {"category": "MDC"}),
     ("event_dossier", {"event": "GW190814"}),
     ("event_dossier", {"event": "S190814bv", "audience": "public"}),
     ("alert_vs_catalog", {"event": "S190814bv"}),
@@ -399,10 +400,18 @@ def test_prompt_arguments_reach_the_text():
     assert "no jargon" in _prompt_text("event_dossier", {"event": "GW150914", "audience": "public"})
 
 
+def test_alert_briefing_category():
+    real = _prompt_text("alert_briefing", {})
+    assert 'category="Production"' in real and "between observing runs" in real
+    simulated = _prompt_text("alert_briefing", {"category": "MDC"})
+    assert 'category="MDC"' in simulated and "none of them is a real detection" in simulated
+
+
 @pytest.mark.parametrize(
     ("name", "arguments", "message"),
     [
         ("event_dossier", {"event": "../etc"}, "invalid event name"),
+        ("alert_briefing", {"category": "Real"}, "category must be"),
         ("event_dossier", {"event": "GW150914", "audience": "cats"}, "audience must be"),
         ("alert_vs_catalog", {}, "exactly one of event or catalog"),
         (

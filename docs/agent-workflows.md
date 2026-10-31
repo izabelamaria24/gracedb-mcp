@@ -24,7 +24,9 @@ knowing which tools to chain.
 
 "Anything new in the last N hours?" For astronomers deciding whether to follow up.
 
-- Arguments: `hours` (default 24), `max_far` (default 3.8e-7 Hz, about one false alarm per month).
+- Arguments: `hours` (default 24), `max_far` (default 3.8e-7 Hz, about one false alarm per
+  month), `category` (`Production` for real alerts, `MDC` for the simulated alerts GraceDB
+  creates about hourly, `Test`).
 - Steps: `search_superevents` over the window, then for each event `get_event_labels`
   (flag retractions, data-quality vetoes, injections), `get_event_metadata`
   (classification, astrophysical probability), and the sky-map image via
@@ -32,7 +34,8 @@ knowing which tools to chain.
 - Output: one-line verdict per event, then a short block each: significance, class,
   review status, sky map. Say plainly when nothing matched.
 - Guardrails: low-latency values change; no public strain exists yet for recent alerts,
-  so do not call the strain tools.
+  so do not call the strain tools. MDC and Test events must be called simulations.
+  Labels without a known meaning (e.g. `HIGH_PROFILE`) are reported, not guessed.
 
 ### 2. Event dossier (`event_dossier`)
 
@@ -79,3 +82,17 @@ which detectors were involved.
 - Guard test: every tool a prompt names exists, so renaming a tool cannot silently break
   a prompt.
 - Manual run of each prompt in an MCP client against live services before release.
+
+## Future: more data sources
+
+No plugin framework until two sources share a shape: each new source is a client module
+plus a `tools/<source>.py`, which the current layout already supports.
+
+| # | Step | Adds | Size |
+| --- | --- | --- | --- |
+| A | Simulated alerts in the briefing (`category`) | Try workflows between observing runs | Done |
+| B | More GraceDB and GWOSC data | Per-pipeline candidate events (gstlal, PyCBC, MBTA, cWB); any GWOSC data-quality flag, not just data availability; observing-run information; GraceDB's own `gwtc` catalogue endpoint | Small to medium |
+| C | Sky-map analysis | 90% credible area, distance, "is this telescope field or galaxy inside the map?" | Medium (needs `ligo.skymap` or `healpy`) |
+| D | GCN (NASA's General Coordinates Network) | Telescope follow-up reports (GCN Circulars) per event; neutrino (IceCube) and gamma-ray (Fermi, Swift) alerts, making this a multi-messenger server | Large |
+
+Recommended order: C for usefulness to astronomers, then D for breadth.

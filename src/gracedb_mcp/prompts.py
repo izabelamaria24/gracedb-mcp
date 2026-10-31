@@ -16,6 +16,20 @@ _AUDIENCES = {
     "public": "Write for the general public: no jargon, use analogies, keep it short.",
 }
 
+_CATEGORIES = {
+    "Production": (
+        "If nothing matches, say so plainly. The detectors may be between observing runs; "
+        "offer to list the most recent alerts instead (search without a start time, "
+        "max_results=5)."
+    ),
+    "MDC": (
+        "These are simulated signals from GraceDB's mock data challenge, created about "
+        "hourly to exercise the alert pipeline. Say clearly at the top that none of them "
+        "is a real detection."
+    ),
+    "Test": "These are test events, not real detections; say so at the top.",
+}
+
 
 def _argument_error(message: str) -> MCPError:
     # Other exceptions reach the client as a bare "Internal server error".
@@ -28,20 +42,26 @@ def _check_event(event: str) -> None:
 
 
 @app.mcp.prompt(title="Gravitational-wave alert briefing")
-def alert_briefing(hours: int = 24, max_far: float = 3.8e-7) -> str:
-    """Brief me on new gravitational-wave alerts from the last few hours."""
+def alert_briefing(hours: int = 24, max_far: float = 3.8e-7, category: str = "Production") -> str:
+    """Brief me on new gravitational-wave alerts from the last few hours.
+
+    Use category "MDC" to try the workflow on simulated alerts, which GraceDB creates
+    about hourly even between observing runs.
+    """
+    if category not in _CATEGORIES:
+        raise _argument_error(f"category must be one of {sorted(_CATEGORIES)}")
     end = datetime.now(timezone.utc)
     start = end - timedelta(hours=hours)
     return f"""Brief me on gravitational-wave alerts from the last {hours} hours.
 
 1. Call `search_superevents` with start="{start.strftime(GRACEDB_TIME)}", \
-end="{end.strftime(GRACEDB_TIME)}" and max_far={max_far:g} (about \
-{max_far * 86400 * 30:.1g} false alarms per month).
-2. If nothing matches, say so plainly. The detectors may be between observing runs; offer \
-to list the most recent alerts instead (search without a start time, max_results=5).
+end="{end.strftime(GRACEDB_TIME)}", max_far={max_far:g} (false alarms about \
+{max_far * 86400 * 30:.1g} times per month) and category="{category}".
+2. {_CATEGORIES[category]}
 3. For each superevent:
    - `get_event_labels`: flag retractions (ADVNO), data-quality vetoes (DQV) and \
-injections (INJ) first, because they change everything else.
+injections (INJ) first, because they change everything else. If a label has no meaning \
+listed, mention it without guessing what it means.
    - `get_event_metadata`: classification (BNS, NSBH, BBH, Terrestrial) and \
 astrophysical probability.
    - If a sky-map image such as `bayestar.png` is in `available_files`, download it with \
