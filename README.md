@@ -32,6 +32,7 @@ pipeline (e.g. isolating astrophysical "chirps" from instrumental glitches).
 | `check_data_availability` | Which detectors have public GWOSC strain for an event or GPS span, before you download. |
 | `check_data_quality` | Per detector: which data-quality vetoes (CBC, Burst, CW, stochastic) the data passes, and any hardware injections. |
 | `list_observing_runs` | Released observing runs with dates, detectors and DOIs; which run (if any) covers a given time. |
+| `analyze_skymap` | 50%/90% credible areas, distance and peak position from a sky map; probability that given positions (galaxies, transients) or telescope fields contain the source. |
 
 ## Resources
 

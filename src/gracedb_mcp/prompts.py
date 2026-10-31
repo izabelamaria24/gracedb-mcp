@@ -64,11 +64,13 @@ injections (INJ) first, because they change everything else. If a label has no m
 listed, mention it without guessing what it means.
    - `get_event_metadata`: classification (BNS, NSBH, BBH, Terrestrial) and \
 astrophysical probability.
-   - If a sky-map image such as `bayestar.png` is in `available_files`, download it with \
-`download_event_files` and look at it through the returned resource URI.
+   - `analyze_skymap`: 90% credible area and distance. If a sky-map image such as \
+`bayestar.png` is in `available_files`, also download it with `download_event_files` and \
+look at it through the returned resource URI.
 4. Report a one-line verdict per event (id, most likely class, significance, retracted or \
 not), then a short paragraph each: significance in plain terms, classification, human \
-review status, and where on the sky (from the image, if you have it).
+review status, and localisation (90% area in square degrees, distance, and where on the \
+sky from the image, if you have it).
 
 These are low-latency results that may still change. Public strain data does not exist \
 yet for recent alerts, so do not call the strain tools."""
@@ -90,8 +92,10 @@ GraceDB only.
 classification, significance, files) and `get_event_labels` (review history, retraction). \
 Events before O3 (2019) have no superevent, only an id starting with G; skip this step \
 for them.
-3. Sky map: if a sky-map image (e.g. `bayestar.png`) is available, download it with \
-`download_event_files` and view it through the returned resource URI.
+3. Sky map: `analyze_skymap` on the superevent gives the 90% credible area, distance and \
+most probable position (it picks the newest map; say which one). If a sky-map image \
+(e.g. `bayestar.png`) is available, download it with `download_event_files` and view it \
+through the returned resource URI.
 4. `check_data_availability` with event="{event}": which detectors have public strain. \
 Then `check_data_quality` with event="{event}": mention any vetoed detector or hardware \
 injection, ignoring continuous-wave (CW) injections, which run for most of each run.

@@ -7,6 +7,7 @@ Modules
 - ``tools.catalog``  GWOSC catalogues: published events with final parameters.
 - ``tools.strain``   GWOSC open data: strain download, availability, GPS time.
 - ``tools.observing`` GWOSC observing runs and data-quality flags.
+- ``tools.skymaps``  Sky-map analysis: credible areas, distance, positions and fields.
 - ``resources``      Downloaded files exposed as ``gracedb://files/<event>/<file>``.
 - ``prompts``        Workflows: alert briefing, event dossier, alert vs. catalogue.
 
@@ -18,7 +19,7 @@ from __future__ import annotations
 
 from . import prompts, resources  # noqa: F401 - importing registers the prompts
 from .app import mcp
-from .tools import alerts, catalog, observing, strain  # noqa: F401 - importing registers the tools
+from .tools import alerts, catalog, observing, skymaps, strain  # noqa: F401 - registers tools
 
 
 def main() -> None:
