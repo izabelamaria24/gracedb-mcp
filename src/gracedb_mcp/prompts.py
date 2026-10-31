@@ -92,9 +92,12 @@ Events before O3 (2019) have no superevent, only an id starting with G; skip thi
 for them.
 3. Sky map: if a sky-map image (e.g. `bayestar.png`) is available, download it with \
 `download_event_files` and view it through the returned resource URI.
-4. `check_data_availability` with event="{event}": which detectors have public strain.
+4. `check_data_availability` with event="{event}": which detectors have public strain. \
+Then `check_data_quality` with event="{event}": mention any vetoed detector or hardware \
+injection, ignoring continuous-wave (CW) injections, which run for most of each run.
 
-Structure the dossier as: Summary; Significance and review; Source (keep alert-time \
+Structure the dossier as: Summary; Significance and review (including which search \
+pipelines found it, from `pipelines` in the metadata); Source (keep alert-time \
 classification and final catalogue parameters clearly separate, quoting 90% intervals); \
 Sky localisation; Public data; Links (GWOSC event page). End with: "Data: Gravitational \
 Wave Open Science Center (gwosc.org), CC BY 4.0."

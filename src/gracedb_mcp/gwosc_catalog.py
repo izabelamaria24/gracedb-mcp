@@ -1,4 +1,4 @@
-"""GWOSC event catalogues: source parameters (masses, distance, SNR) for confident events.
+"""GWOSC metadata: event catalogues, observing runs and data-quality flags.
 
 GWOSC lists every published event with its estimated parameters and 90% credible
 intervals. GraceDB does not link superevents to catalogue names, so superevent ids
@@ -11,6 +11,7 @@ import time
 from typing import Any
 
 from gwosc import api
+from gwosc.api import v2
 
 # Parameters kept in summaries; each has ``<name>_lower``/``_upper`` offsets and ``_unit``.
 PARAMETERS = (
@@ -122,3 +123,36 @@ def strain_detectors(record: dict[str, Any], start: float, end: float) -> list[s
         for s in record.get("strain", [])
         if s.get("format") == "hdf5" and s["GPSstart"] <= start and end <= s["GPSstart"] + s["duration"]
     })
+
+
+def runs() -> list[dict[str, Any]]:
+    """Released observing runs: name, gps_start, gps_end, detectors (oldest first)."""
+
+    def fetch() -> list[dict[str, Any]]:
+        keep = ("name", "gps_start", "gps_end", "detectors")
+        return sorted(
+            ({k: run[k] for k in keep} for run in v2.fetch_runs()), key=lambda r: r["gps_start"]
+        )
+
+    return _cached("runs", fetch)
+
+
+def run_doi(run: str) -> str | None:
+    return _cached(f"run:{run}", lambda: v2.fetch_run(run).get("doi") or None)
+
+
+def runs_overlapping(start: float, end: float) -> list[dict[str, Any]]:
+    return [r for r in runs() if r["gps_start"] < end and start < r["gps_end"]]
+
+
+def run_flags(run: str) -> list[dict[str, str]]:
+    """Data-quality flags published for a run, e.g. ``H1_CBC_CAT2``, with descriptions."""
+
+    def fetch() -> list[dict[str, str]]:
+        url = f"{v2.DEFAULT_URL}/api/v2/runs/{run}/timelines"
+        return [
+            {"name": flag["name"], "description": flag["description"]}
+            for flag in v2.produce_fetched_objects(url)
+        ]
+
+    return _cached(f"flags:{run}", fetch)

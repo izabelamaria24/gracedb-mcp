@@ -91,7 +91,8 @@ plus a `tools/<source>.py`, which the current layout already supports.
 | # | Step | Adds | Size |
 | --- | --- | --- | --- |
 | A | Simulated alerts in the briefing (`category`) | Try workflows between observing runs | Done |
-| B | More GraceDB and GWOSC data | Per-pipeline candidate events (gstlal, PyCBC, MBTA, cWB); any GWOSC data-quality flag, not just data availability; observing-run information; GraceDB's own `gwtc` catalogue endpoint | Small to medium |
+| B | More GraceDB and GWOSC data | `list_observing_runs`, `check_data_quality` (all GWOSC veto categories and hardware injections), each pipeline's best candidate in `get_event_metadata`, pipeline and detectors in search results; GPS/UTC without gwpy | Done |
+| B2 | Per-pipeline candidate events (G-ids) and GraceDB's `gwtc` endpoint | Both need an LVK login (HTTP 401 anonymously); only worth it for authenticated users | Blocked for public use |
 | C | Sky-map analysis | 90% credible area, distance, "is this telescope field or galaxy inside the map?" | Medium (needs `ligo.skymap` or `healpy`) |
 | D | GCN (NASA's General Coordinates Network) | Telescope follow-up reports (GCN Circulars) per event; neutrino (IceCube) and gamma-ray (Fermi, Swift) alerts, making this a multi-messenger server | Large |
 

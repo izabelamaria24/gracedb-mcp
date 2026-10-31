@@ -55,6 +55,17 @@ def _astro_probability(p_astro: dict[str, Any] | None) -> float | None:
     return round(1.0 - float(terrestrial), 6)
 
 
+def _preferred_event(record: dict[str, Any]) -> dict[str, Any]:
+    """Pipeline, search and detectors of the candidate chosen to represent the superevent."""
+    event = record.get("preferred_event_data") or {}
+    instruments = event.get("instruments")
+    return {
+        "pipeline": event.get("pipeline"),
+        "search": event.get("search"),
+        "detectors": instruments.split(",") if instruments else None,
+    }
+
+
 @app.mcp.tool()
 def search_superevents(
     start: str | None = None,
@@ -93,6 +104,7 @@ def search_superevents(
             "t_0": record.get("t_0"),
             "far": record.get("far"),
             "preferred_event": record.get("preferred_event"),
+            **_preferred_event(record),
             "labels": record.get("labels"),
         }
         for record in records
@@ -118,9 +130,11 @@ def get_event_metadata(graceid: str) -> dict[str, Any]:
         graceid: The superevent id, e.g. ``S230518h``.
 
     Returns:
-        A dict with the raw superevent record, the available file list, and the
+        A dict with the raw superevent record, the available file list, the
         parsed source-classification probabilities (BBH / BNS / NSBH / Terrestrial)
-        when a p_astro file has been published.
+        when a p_astro file has been published, and ``pipelines``: each search
+        pipeline's best candidate (O4 onwards), so you can see which pipelines
+        found the signal and how significant each one rated it.
     """
     with ThreadPoolExecutor(max_workers=2) as pool:
         record_future = pool.submit(app.client.get_superevent, graceid)
@@ -131,6 +145,11 @@ def get_event_metadata(graceid: str) -> dict[str, Any]:
     return {
         "superevent_id": graceid,
         "record": record,
+        "preferred": _preferred_event(record),
+        "pipelines": {
+            name: {k: event.get(k) for k in ("graceid", "search", "far", "gpstime")}
+            for name, event in (record.get("pipeline_preferred_events") or {}).items()
+        },
         "classification": p_astro,
         "astro_probability": _astro_probability(p_astro),
         "available_files": sorted(files.keys()),

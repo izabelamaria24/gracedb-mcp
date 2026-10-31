@@ -30,6 +30,8 @@ pipeline (e.g. isolating astrophysical "chirps" from instrumental glitches).
 | `get_catalog_event` | Source parameters with 90% intervals for one event, by GW name or GraceDB id. |
 | `get_event_labels` | GraceDB labels (data quality, review, retraction, products ready) explained in plain English. |
 | `check_data_availability` | Which detectors have public GWOSC strain for an event or GPS span, before you download. |
+| `check_data_quality` | Per detector: which data-quality vetoes (CBC, Burst, CW, stochastic) the data passes, and any hardware injections. |
+| `list_observing_runs` | Released observing runs with dates, detectors and DOIs; which run (if any) covers a given time. |
 
 ## Resources
 
@@ -69,7 +71,7 @@ GWOSC (and cleanly reports when data isn't public).
 
 - Python 3.10+
 - `mcp`, `ligo-gracedb`, `gwosc`, `python-dotenv`
-- Optional: `gwpy` (for `download_strain_data` and `utc_to_gps`) — installed via the `strain` extra.
+- Optional: `gwpy` (for `download_strain_data`) — installed via the `strain` extra.
 
 ## Install
 
@@ -129,7 +131,7 @@ docker run --rm -i -v gracedb-data:/data ghcr.io/izabelamaria24/gracedb-mcp:late
 | Tag | Download | Contents |
 | --- | --- | --- |
 | `latest`, `X.Y.Z` | ~165 MB | Everything, including strain download (`gwpy`). |
-| `latest-slim`, `X.Y.Z-slim` | ~60 MB | All tools except `download_strain_data` and `utc_to_gps`. |
+| `latest-slim`, `X.Y.Z-slim` | ~60 MB | All tools except `download_strain_data`. |
 
 Or build it yourself (add `--build-arg EXTRAS=` for the slim variant):
 

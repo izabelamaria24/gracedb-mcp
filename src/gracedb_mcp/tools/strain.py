@@ -12,7 +12,7 @@ from typing import Any
 from gwosc import timeline
 from mcp.server.mcpserver import Context
 
-from .. import app, gwosc_catalog, resources
+from .. import app, gpstime, gwosc_catalog, resources
 
 # Detector names go into GWOSC URLs, so only allow the standard two-character form.
 _IFO = re.compile(r"^[A-Z][0-9]$")
@@ -128,15 +128,10 @@ def utc_to_gps(iso_timestamp: str) -> dict[str, Any]:
     Args:
         iso_timestamp: e.g. ``2015-09-14T09:50:45`` (UTC assumed if no tz given).
     """
-    try:
-        from gwpy.time import to_gps
-    except ImportError:
-        return {"error": "gwpy is required for GPS conversion: pip install 'gracedb-mcp[strain]'"}
-
-    dt = datetime.fromisoformat(iso_timestamp)
+    dt = datetime.fromisoformat(iso_timestamp.replace("Z", "+00:00"))
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
-    return {"iso": iso_timestamp, "gps": float(to_gps(dt))}
+    return {"iso": iso_timestamp, "gps": gpstime.utc_to_gps(dt)}
 
 
 def _event_time(event: str) -> tuple[float, dict[str, Any] | None]:
@@ -149,6 +144,54 @@ def _event_time(event: str) -> tuple[float, dict[str, Any] | None]:
         raise ValueError(f"superevent {event} has no t_0 GPS time")
     match = gwosc_catalog.find_by_gps(t_0)
     return t_0, gwosc_catalog.event_record(match["commonName"]) if match else None
+
+
+class Span:
+    """A validated GPS span, optionally centred on an event."""
+
+    def __init__(
+        self,
+        gps_start: float,
+        gps_end: float,
+        event: str | None = None,
+        t_0: float | None = None,
+        record: dict[str, Any] | None = None,
+    ) -> None:
+        self.gps_start, self.gps_end = gps_start, gps_end
+        self.event, self.t_0, self.record = event, t_0, record
+        # Whole seconds covering the span, as GWOSC segment queries expect.
+        self.start, self.end = math.floor(gps_start), math.ceil(gps_end)
+
+    def coverage(self, segments: list[tuple[int, int]]) -> tuple[list[list[int]], float]:
+        """Clip segments to the span; return them and the fraction of the span covered."""
+        clipped = [(max(s, self.start), min(e, self.end)) for s, e in segments]
+        clipped = [(s, e) for s, e in clipped if e > s]
+        covered = sum(e - s for s, e in clipped)
+        return [list(seg) for seg in clipped], round(covered / (self.end - self.start), 4)
+
+
+def resolve_span(
+    gps_start: float | None,
+    gps_end: float | None,
+    event: str | None,
+    window: float,
+    detectors: list[str] | None,
+) -> tuple[Span, list[str]] | dict[str, str]:
+    """Validate a span (or event + window) and detector names; return an error dict if bad."""
+    t_0 = record = None
+    if event is not None:
+        app.check_id(event)
+        t_0, record = _event_time(event)
+        gps_start, gps_end = t_0 - window / 2, t_0 + window / 2
+    if gps_start is None or gps_end is None:
+        return {"error": "give either gps_start and gps_end, or event"}
+    if not 0 < gps_end - gps_start <= MAX_AVAILABILITY_SPAN:
+        return {"error": f"span must be positive and at most {MAX_AVAILABILITY_SPAN} s (7 days)"}
+    detectors = detectors or ["H1", "L1", "V1", "K1"]
+    bad = [d for d in detectors if not _IFO.match(d)]
+    if bad:
+        return {"error": f"invalid detector names {bad}; use e.g. H1, L1, V1, K1"}
+    return Span(gps_start, gps_end, event, t_0, record), detectors
 
 
 @app.mcp.tool()
@@ -178,37 +221,25 @@ def check_data_availability(
         they cover. ``available`` lists detectors with complete coverage, also
         counting the short files GWOSC publishes around catalogue events.
     """
-    t_0 = record = None
-    if event is not None:
-        app.check_id(event)
-        t_0, record = _event_time(event)
-        gps_start, gps_end = t_0 - window / 2, t_0 + window / 2
-    if gps_start is None or gps_end is None:
-        return {"error": "give either gps_start and gps_end, or event"}
-    if not 0 < gps_end - gps_start <= MAX_AVAILABILITY_SPAN:
-        return {"error": f"span must be positive and at most {MAX_AVAILABILITY_SPAN} s (7 days)"}
-    detectors = detectors or ["H1", "L1", "V1", "K1"]
-    bad = [d for d in detectors if not _IFO.match(d)]
-    if bad:
-        return {"error": f"invalid detector names {bad}; use e.g. H1, L1, V1, K1"}
-
-    start, end = math.floor(gps_start), math.ceil(gps_end)
+    resolved = resolve_span(gps_start, gps_end, event, window, detectors)
+    if isinstance(resolved, dict):
+        return resolved
+    span, detectors = resolved
     segments_by_ifo, failed = app.map_concurrently(
-        lambda ifo: timeline.get_segments(f"{ifo}_DATA", start, end), detectors
+        lambda ifo: timeline.get_segments(f"{ifo}_DATA", span.start, span.end), detectors
     )
     report: dict[str, Any] = {}
     for ifo, raw in segments_by_ifo.items():
-        segments = [(max(s, start), min(e, end)) for s, e in raw]
-        covered = sum(e - s for s, e in segments if e > s)
-        report[ifo] = {
-            "segments": [list(seg) for seg in segments],
-            "coverage": round(covered / (end - start), 4),
-        }
+        segments, coverage = span.coverage(raw)
+        report[ifo] = {"segments": segments, "coverage": coverage}
     errors = {ifo: str(exc) for ifo, exc in failed.items()}
 
-    event_files = gwosc_catalog.strain_detectors(record, gps_start, gps_end) if record else []
+    record = span.record
+    event_files = (
+        gwosc_catalog.strain_detectors(record, span.gps_start, span.gps_end) if record else []
+    )
     result: dict[str, Any] = {
-        "gps_window": [gps_start, gps_end],
+        "gps_window": [span.gps_start, span.gps_end],
         "available": sorted(
             ifo for ifo in detectors
             if ifo in event_files or report.get(ifo, {}).get("coverage") == 1
@@ -216,8 +247,8 @@ def check_data_availability(
         "detectors": report,
         "errors": errors,
     }
-    if event is not None:
-        result.update(event=event, t_0=t_0)
+    if span.event is not None:
+        result.update(event=span.event, t_0=span.t_0)
     if record:
         result["catalog_event_files"] = {"event": record["commonName"], "detectors": event_files}
     if not errors and not event_files and not any(r["coverage"] for r in report.values()):
