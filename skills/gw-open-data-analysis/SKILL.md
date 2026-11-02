@@ -1,15 +1,17 @@
 ---
 name: gw-open-data-analysis
-description: Look at a gravitational-wave event in public LIGO/Virgo/KAGRA data. Finds the event, checks which detectors have open data, downloads the strain from GWOSC, whitens it and plots the chirp in a Q-transform (time-frequency map), then matched-filters it with a waveform for the catalogue masses to measure the signal-to-noise ratio, and explains what is and is not seen. Use when asked to "show the chirp", "plot GW150914", "analyse the strain of an event", "make a Q-transform/spectrogram", "matched filter", "measure the SNR", or "start a notebook on LIGO open data". Needs the gracedb-mcp server and local Python with gwpy (plus lalsuite for the matched filter).
+description: Look at a gravitational-wave event in public LIGO/Virgo/KAGRA data. Finds the event, checks which detectors have open data, downloads the strain from GWOSC, whitens it and plots the chirp in a Q-transform (time-frequency map), then matched-filters it with a waveform for the catalogue masses to measure the signal-to-noise ratio, and explains what is and is not seen. Also runs a targeted search: given a gamma-ray burst or neutrino alert from GCN, it searches the open data around it for a neutron-star merger and gives a false-alarm probability. Use when asked to "show the chirp", "plot GW150914", "analyse the strain of an event", "make a Q-transform/spectrogram", "matched filter", "measure the SNR", "was there a gravitational wave with GRB ...", "search LIGO data around this burst/neutrino", or "start a notebook on LIGO open data". Needs the gracedb-mcp server and local Python with gwpy (plus lalsuite for the matched filter and targeted search).
 ---
 
 # Open-data analysis starter
 
 Takes one event from name to plots: event, then data availability, strain, whitening,
 Q-transform, and matched filter. A short report follows. Uses the `gracedb-mcp` tools
-for lookup and download. The signal processing is done by two scripts next to this
-file, [`scripts/qscan.py`](scripts/qscan.py) and
-[`scripts/matched_filter.py`](scripts/matched_filter.py).
+for lookup and download. The signal processing is done by scripts next to this file:
+[`scripts/qscan.py`](scripts/qscan.py),
+[`scripts/matched_filter.py`](scripts/matched_filter.py), and, for searches around
+gamma-ray bursts or neutrinos, [`scripts/targeted_search.py`](scripts/targeted_search.py)
+(see [Targeted search](#targeted-search-around-a-gamma-ray-burst-or-neutrino)).
 
 ## Requirements
 
@@ -140,6 +142,72 @@ Report:
 5. The plot paths, embedded as images where the client allows.
 6. Credit: "Data from the Gravitational Wave Open Science Center (gwosc.org)". Add
    the run's DOI from `list_observing_runs`.
+
+## Targeted search around a gamma-ray burst or neutrino
+
+This answers: was there a neutron-star merger in the public data when this burst or
+neutrino arrived? A short gamma-ray burst can come from such a merger. GRB 170817A
+arrived 1.7 s after the GW170817 merger.
+
+1. **Find the trigger.** Call `search_gcn_circulars` with the name (e.g. `GRB 170817A`,
+   `IceCube-200530A`). Read the discovery circular with `get_gcn_circular` and take the
+   trigger time. Fermi GBM circulars give it as "At HH:MM:SS.ss UT on ...". Note
+   whether GBM calls the burst SHORT or LONG. Long bursts come from collapsing stars,
+   so a merger is not expected. Neutrino alerts are not expected to come from mergers
+   either. The search still works for both, but say this.
+2. **Convert the time** with `utc_to_gps`.
+3. **Check the data.** Call `check_data_availability` with `gps_start` 300 s before
+   the trigger and `gps_end` 300 s after it. You need at least one detector, ideally
+   two. If none has data, stop and say so: often the detectors were off, or the run's
+   data is not public yet. Call `check_data_quality` for the same span and report any
+   flags.
+4. **Look for glitches.** Run `qscan.py` on the window from 6 s before the trigger to
+   2 s after it. A loud, short, broadband blob is a glitch. Pass its offset from the
+   trigger to `--gate`, as LVK did for GW170817: the glitch was 3.06 s before
+   GRB 170817A, so `--gate L1:-3.06`.
+5. **Run the search** (about 3–4 minutes):
+
+   ```bash
+   python scripts/targeted_search.py --gps <trigger GPS> --fetch H1 L1 \
+       --label "<GRB name>" --out <name>_search [--gate IFO:OFFSET ...]
+   ```
+
+   It fetches 512 s of data. It searches about 1,000 templates: neutron star plus
+   neutron star, with the heavier mass between 1.0 and 2.5 solar masses. Pass `--m1 1
+   10` to include black hole plus neutron star; that is slower. The script finds the
+   loudest network SNR in the on-source window, from 5 s before the trigger to 1 s
+   after it. It then measures the same statistic in about 70 off-source windows of
+   the surrounding data. The false-alarm probability is the fraction of off-source
+   windows at least as loud, counting the on-source window itself.
+6. **Report:**
+   - the trigger and its type (short or long GRB, or neutrino);
+   - the detectors used;
+   - the on-source network SNR, its time relative to the trigger, and each
+     detector's SNR;
+   - the off-source median and maximum;
+   - the false-alarm probability;
+   - the plot (`targeted_search.png`).
+
+   Tested results:
+
+   | Trigger | On-source | Off-source max | False-alarm probability |
+   | --- | --- | --- | --- |
+   | GRB 170817A (L1 gated) | 28.8 at -2.02 s; H1 18.2, L1 22.3 | 7.5 | 0.0145, the smallest possible with 68 windows |
+   | GRB 200326A (long GRB) | 6.7 | 7.2 | 0.35, nothing found |
+
+   **How to interpret the false-alarm probability:**
+   - Below 0.01 needs a longer `--duration` to measure at all: with ~70 windows the
+     smallest possible value is about 0.014. The script adds a `note` when that bound
+     is hit.
+   - A value near the bound, with an SNR far above the off-source maximum (as for
+     GRB 170817A), is strong evidence.
+   - A value around 0.05 is not a detection. LVK searches look at hundreds of bursts,
+     so one in twenty looks that loud by chance.
+   - "Nothing found" does not mean no merger happened. It means none was loud enough
+     to see at this distance. Say that.
+   - This search is simpler than the LVK one: two detectors are added in quadrature
+     rather than combined coherently on the sky, there are no spins, and there is no
+     chi-squared test. Present it as an independent check, not a published result.
 
 ## How to read the results
 

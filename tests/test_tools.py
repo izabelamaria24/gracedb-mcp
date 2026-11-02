@@ -439,7 +439,7 @@ SKILLS_DIR = os.path.join(os.path.dirname(__file__), "..", "skills")
 # Tool arguments and result fields the skills mention.
 SKILL_FIELDS = {
     "gps_time", "network_matched_filter_snr", "mass_1_source", "mass_2_source",
-    "time_offset_s", "background_max_snr", "combined_snr",
+    "time_offset_s", "background_max_snr", "combined_snr", "gps_start", "gps_end",
 }
 
 

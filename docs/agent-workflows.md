@@ -87,6 +87,19 @@ the data and shows the chirp in a Q-transform. Needs code execution, hence a ski
 
   It reproduces published SNRs to within a few percent: GW150914 H1 19.5 / L1 13.6;
   GW170817 H1 17.9 / L1 24.2 with the L1 glitch gated.
+- `scripts/targeted_search.py` searches around a GRB or neutrino time found through GCN:
+  - a bank of about 1,000 IMRPhenomD templates for neutron-star binaries, spaced by
+    signal cycles (at most ~4% SNR loss);
+  - network SNR from detectors coincident within 30 ms;
+  - the loudest value in the on-source window (-5 s to +1 s) is compared with about
+    70 off-source windows, which gives the false-alarm probability.
+
+  Tested on two triggers:
+  - GRB 170817A: finds GW170817 at -2.02 s with network SNR 28.8 against an off-source
+    maximum of 7.5;
+  - GRB 200326A (long): SNR 6.7, false-alarm probability 0.35.
+
+  Injection tests cover both cases.
 - Steps: `get_catalog_event`, then `check_data_availability`, `download_strain_data` and the
   script. The window depends on chirp mass; the agent looks at the images before reporting.
 - Checked against GW150914, GW170814, GW190521_074359, GW190521, GW190814 and GW170817.

@@ -80,7 +80,7 @@ def gate(d: np.ndarray, fs: float, index: float) -> np.ndarray:
 class Detector:
     """One detector's data, Fourier-transformed once and filtered with any template."""
 
-    def __init__(self, raw, f_low: float, gps: float, gates: list[float]) -> None:
+    def __init__(self, raw, f_low: float, gps: float, gates: list[float], lead: float | None = None) -> None:
         d, self.fs = raw.value, raw.sample_rate.value
         for offset in gates:
             d = gate(d, self.fs, (gps + offset - raw.t0.value) * self.fs)
@@ -100,13 +100,17 @@ class Detector:
         # Times where the template neither wraps around the start nor hits the tapers.
         duration = self.n * dt
         edge = TAPER / 2 * duration
+        lead = duration / 4 if lead is None else lead
         t = raw.t0.value + np.arange(self.n) * dt - gps
-        self.valid = (t >= t[0] + edge + duration / 4) & (t <= t[-1] - edge)
+        self.valid = (t >= t[0] + edge + lead) & (t <= t[-1] - edge)
         self.t = t[self.valid]
 
     def snr(self, m1: float, m2: float) -> np.ndarray:
         """SNR for each merger time in ``self.t`` (seconds from --gps)."""
-        h_f = template(m1, m2, self.f_low, self.df, len(self.S))
+        return self.filter(template(m1, m2, self.f_low, self.df, len(self.S)))
+
+    def filter(self, h_f: np.ndarray) -> np.ndarray:
+        """SNR time series for a frequency-domain template on this detector's grid."""
         b = self.band
         # 3. Compare data and template at every time shift at once: multiply in frequency
         #    (weighting by 1/S, so noisy frequencies count less), then inverse FFT.
