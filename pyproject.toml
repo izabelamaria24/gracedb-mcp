@@ -1,13 +1,13 @@
 [project]
 name = "gracedb-mcp"
-version = "0.3.0"
-description = "MCP server exposing LIGO/Virgo gravitational-wave alerts (GraceDB) to LLM agents."
+version = "0.4.0"
+description = "MCP server for LIGO/Virgo/KAGRA gravitational-wave alerts (GraceDB), open data (GWOSC) and GCN follow-up."
 readme = "README.md"
 requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [{ name = "izabelamaria24" }]
-keywords = ["mcp", "gravitational-waves", "ligo", "virgo", "gracedb", "astrophysics"]
+keywords = ["mcp", "gravitational-waves", "ligo", "virgo", "gracedb", "gwosc", "gcn", "astrophysics"]
 
 dependencies = [
     "mcp>=2.0.0",
