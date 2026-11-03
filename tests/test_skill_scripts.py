@@ -131,6 +131,19 @@ def test_targeted_search_noise_is_not_significant(monkeypatch, capsys, tmp_path)
     assert result["false_alarm_probability"] > 0.1
 
 
+def test_time_slides_add_background_without_leaking_the_on_source(monkeypatch, capsys, tmp_path):
+    # A loud signal in H1 alone must not reach the background through slides.
+    rng = np.random.default_rng(4)
+    data = {
+        "H1": _injection(15.0, -2.0, rng, BNS, BNS_F_LOW, SEARCH_SECONDS),
+        "L1": _injection(0.0, 0.0, rng, BNS, BNS_F_LOW, SEARCH_SECONDS),
+    }
+    off = _search(monkeypatch, capsys, tmp_path, data)["off_source"]
+    assert off["slides"] > 5
+    assert off["windows"] > 5 * off["zero_lag_windows"]
+    assert off["max"] < 9
+
+
 def test_bank_spacing_follows_signal_cycles():
     # Lower start frequency means more cycles, so a denser bank.
     assert len(ts.bank(1.0, 2.5, 1.4, 30.0)) > len(ts.bank(1.0, 2.5, 1.4, 50.0)) > 100

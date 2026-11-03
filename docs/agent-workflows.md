@@ -91,13 +91,16 @@ the data and shows the chirp in a Q-transform. Needs code execution, hence a ski
   - a bank of about 1,000 IMRPhenomD templates for neutron-star binaries, spaced by
     signal cycles (at most ~4% SNR loss);
   - network SNR from detectors coincident within 30 ms;
-  - the loudest value in the on-source window (-5 s to +1 s) is compared with about
-    70 off-source windows, which gives the false-alarm probability.
+  - the loudest value in the on-source window (-5 s to +1 s) is compared with the
+    background, which gives the false-alarm probability. The background is about 70
+    off-source windows plus 50 time slides, about 3,400 windows in all. Slides use a
+    10 ms binned statistic, and the on-source window is removed from every detector
+    first. Calibrated over 100 noise-only runs.
 
   Tested on two triggers:
-  - GRB 170817A: finds GW170817 at -2.02 s with network SNR 28.8 against an off-source
-    maximum of 7.5;
-  - GRB 200326A (long): SNR 6.7, false-alarm probability 0.35.
+  - GRB 170817A: finds GW170817 at -2.02 s with network SNR 28.8, against a background
+    maximum of 8.0 over 3,384 windows (false-alarm probability 0.0003);
+  - GRB 200326A (long): SNR 6.7, false-alarm probability 0.45.
 
   Injection tests cover both cases.
 - Steps: `get_catalog_event`, then `check_data_availability`, `download_strain_data` and the

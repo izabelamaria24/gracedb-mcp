@@ -165,20 +165,24 @@ arrived 1.7 s after the GW170817 merger.
    2 s after it. A loud, short, broadband blob is a glitch. Pass its offset from the
    trigger to `--gate`, as LVK did for GW170817: the glitch was 3.06 s before
    GRB 170817A, so `--gate L1:-3.06`.
-5. **Run the search** (about 3–4 minutes):
+5. **Run the search:**
 
    ```bash
    python scripts/targeted_search.py --gps <trigger GPS> --fetch H1 L1 \
        --label "<GRB name>" --out <name>_search [--gate IFO:OFFSET ...]
    ```
 
-   It fetches 512 s of data. It searches about 1,000 templates: neutron star plus
+   It fetches 512 s of data and takes about 4–6 minutes. It searches about 1,000 templates: neutron star plus
    neutron star, with the heavier mass between 1.0 and 2.5 solar masses. Pass `--m1 1
    10` to include black hole plus neutron star; that is slower. The script finds the
    loudest network SNR in the on-source window, from 5 s before the trigger to 1 s
-   after it. It then measures the same statistic in about 70 off-source windows of
-   the surrounding data. The false-alarm probability is the fraction of off-source
-   windows at least as loud, counting the on-source window itself.
+   after it. It then measures the same statistic in thousands of off-source windows.
+   About 70 come from the surrounding data. The rest come from 50 time slides, which
+   shift one detector against the other by whole windows so no real signal can line
+   up. The on-source window is removed from every detector before sliding. The
+   false-alarm probability is the fraction of off-source windows at least as loud,
+   counting the on-source window itself. Checked over 100 noise-only runs, it is
+   calibrated: 3% fell below 0.05 and 44% below 0.5.
 6. **Report:**
    - the trigger and its type (short or long GRB, or neutrino);
    - the detectors used;
@@ -192,13 +196,13 @@ arrived 1.7 s after the GW170817 merger.
 
    | Trigger | On-source | Off-source max | False-alarm probability |
    | --- | --- | --- | --- |
-   | GRB 170817A (L1 gated) | 28.8 at -2.02 s; H1 18.2, L1 22.3 | 7.5 | 0.0145, the smallest possible with 68 windows |
-   | GRB 200326A (long GRB) | 6.7 | 7.2 | 0.35, nothing found |
+   | GRB 170817A (L1 gated) | 28.8 at -2.02 s; H1 18.2, L1 22.3 | 8.0 over 3,384 windows | 0.0003, the smallest possible with these windows |
+   | GRB 200326A (long GRB) | 6.7 | 7.8 over 3,384 windows | 0.45, nothing found |
 
    **How to interpret the false-alarm probability:**
-   - Below 0.01 needs a longer `--duration` to measure at all: with ~70 windows the
-     smallest possible value is about 0.014. The script adds a `note` when that bound
-     is hit.
+   - The smallest possible value is 1 / (windows + 1), about 0.0003 with the default
+     50 slides. The script adds a `note` when that bound is hit. More `--slides` (up to
+     about 70 at 512 s) or a longer `--duration` lowers it.
    - A value near the bound, with an SNR far above the off-source maximum (as for
      GRB 170817A), is strong evidence.
    - A value around 0.05 is not a detection. LVK searches look at hundreds of bursts,
